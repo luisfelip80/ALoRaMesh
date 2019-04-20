@@ -690,6 +690,7 @@ void loop() {
                 tabela [i] [0] = 0;
                 tabela [i] [1] = -1;
                 tabela [i] [2] = max;
+                nr_vizinhos --;
                 Serial.println("Removido.");
             }
         }
