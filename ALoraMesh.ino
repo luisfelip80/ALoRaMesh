@@ -165,7 +165,7 @@ void menorCusto(int origem, int anterior){
     for(i = 0; i < linhas; i++){
         Serial.print("|");
         //verificando em qual linha está o repetidor para marca-lo
-        if(tabela[i][1] == anterior || tabela[i][1]==origem && tabela[i][1]!= 2){
+        if(tabela[i][1] == anterior || tabela[i][1]==origem && tabela[i][0]!= 2){
             tabela[i][0] = 1;
         }
         if(tabela[i][0] != 2 && tabela[i][0] != 1){
@@ -229,7 +229,7 @@ void addFila( byte origem, byte anterior){
     for(i = 0; i < linhas; i++){
         Serial.print('|');
         //verificando em qual linha está os nós de loop para marca.
-        if(tabela [i] [1] == origem || tabela [i] [1] == anterior){
+        if(tabela [i] [1] == origem || tabela [i] [1] == anterior && tabela [i] [0] != 2){
             tabela [i] [0] = 1;
         }
     }
@@ -449,7 +449,7 @@ void onReceive(int packetSize) {
                 //criar um novo repetidor, pois o pacote entrará em loop 
                 for(i = 0; i < linhas; i++){
                     //verificando em qual linha está o repetidor para marca-lo
-                    if(ip_repetidor == tabela[i][1] && tabela[i][1]!=ip_gateway){
+                    if(ip_repetidor == tabela[i][1] && tabela[i][1]!=ip_gateway && tabela[i][0] != 2){
                         tabela [i] [0] = 1;
                         // 1 -> repetidor não deve ser requisitado para esse pacote.
                     }
@@ -679,7 +679,7 @@ void loop() {
         lastTime = millis();
     }
 
-    if(tentativas_reenvio > 3 && ip_gateway != ip_repetidor){
+    if(tentativas_reenvio > 5 && ip_gateway != ip_repetidor){
         Serial.println("3 tres tentativas falharam.");
         doing = "3 tentativas fal.";
         tentativas_reenvio = 0;
