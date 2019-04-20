@@ -10,7 +10,7 @@
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x00
+#define ip_this_node 0x08
 
 #define BAND    915E6  //you can set band here directly,e.g. 868E6,915E6
 #define linhas 15
@@ -109,7 +109,12 @@ void drawFontFaceDemo() {
     }
     Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
     Heltec.display->setFont(ArialMT_Plain_16);
-    Heltec.display->drawString(0, 10, "   IP      "+String(ip_this_node));
+    if(ip_this_node!=ip_gateway){
+        Heltec.display->drawString(0, 10, "  IP      "+String(ip_this_node));
+    }
+    else{
+        Heltec.display->drawString(0, 10, "       Gateway");
+    }
     Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
     Heltec.display->setFont(ArialMT_Plain_10);
     if(ip_this_node == ip_gateway){
