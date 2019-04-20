@@ -165,7 +165,7 @@ void menorCusto(int origem, int anterior){
     for(i = 0; i < linhas; i++){
         Serial.print("|");
         //verificando em qual linha está o repetidor para marca-lo
-        if(tabela[i][1] == anterior || tabela[i][1]==origem){
+        if(tabela[i][1] == anterior || tabela[i][1]==origem && tabela[i][1]!= 2){
             tabela[i][0] = 1;
         }
         if(tabela[i][0] != 2 && tabela[i][0] != 1){
