@@ -159,13 +159,16 @@ void showNos(){
     Heltec.display->drawString(0, 35,"    "+vi[10]+"    " +vi[11]+"    "+vi[12]+"    "+vi[13]+"    "+vi[14]);
     Heltec.display->drawString(0,54, ">"+doing);
 }
-void menorCusto(int origem, int anterior){
-    int i;
+void menorCusto(){
+    int i , origem, anterior;
+    seta = lastOne();
+    origem = seta->next->orig;
+    anterior = seta-> next->ant;
     doing = "definir repetidor";
     for(i = 0; i < linhas; i++){
         Serial.print("|");
         //verificando em qual linha está o repetidor para marca-lo
-        if(tabela[i][1] == anterior || tabela[i][1]==origem && tabela[i][0]!= 2){
+        if((tabela [i] [1] == origem && tabela [i] [0] != 2) || (tabela [i] [1] == anterior && tabela [i] [0] != 2)){
             tabela[i][0] = 1;
         }
         if(tabela[i][0] != 2 && tabela[i][0] != 1){
@@ -224,17 +227,14 @@ void addFila( byte origem, byte anterior){
     doing = "verifica repetidores";
     int i,marc = 0;
     //verificar se o pacote não entrará em loop
-    Serial.print("Verificando >");
     //Verifica se tem loop.
     for(i = 0; i < linhas; i++){
-        Serial.print('|');
         //verificando em qual linha está os nós de loop para marca.
-        if(tabela [i] [1] == origem || tabela [i] [1] == anterior && tabela [i] [0] != 2){
+        if((tabela [i] [1] == origem && tabela [i] [0] != 2) || (tabela [i] [1] == anterior && tabela [i] [0] != 2)){
             tabela [i] [0] = 1;
         }
     }
     for(i = 0; i < linhas; i++){
-        Serial.print('|');
         //verificando se há nos além do anterior, origem e isolados.
         if(tabela[i][0] != 1 && tabela[i][0] != 2 && tabela[i][1] != -1){
             marc = 1;
@@ -263,7 +263,6 @@ void addFila( byte origem, byte anterior){
         Serial.println("Configurando retorno ao anterior com msg de erro [no way].");
         sendMsg(id_repetidor_isolado,origem,anterior,anterior,msg);
         Serial.println("Enviado.");
-        
         return;
     }
     // tem mais nós além do repetidor e anterior.
@@ -343,7 +342,7 @@ void onReceive(int packetSize) {
             Serial.println("verificando nos");
             doing = "verificando nos";
             custo = Heltec.LoRa.packetRssi() * -1;
-
+            h=0;
             if(nr_vizinhos < 15){
                 for(i = 0; i< linhas; i ++){
                     //verificando se é um nó novo na rede
@@ -353,6 +352,7 @@ void onReceive(int packetSize) {
                         if(custo != tabela [i] [2]){
                             tabela [i] [2] = custo;
                         }
+                        i=linhas;
                     }
                 }
                 if(h == 0){
@@ -369,15 +369,14 @@ void onReceive(int packetSize) {
                     Serial.println("Adicionado a tabela.");
                     doing = "add a tabela";
                 }
-            }
-            else{
-                Serial.println("no ja registrado.");
-                doing= "no ja reg.";
+                else{
+                    Serial.println("no ja registrado.");
+                    doing= "no ja reg.";
+                }
             }
             //malandragem.
             //o correto deveria enviar a origem e o anterior para calcular novo repetidor, mas dentro desse case eu posso
             // fazer isso.
-            menorCusto(ip_this_node, ip_this_node);
             break;
         case id_reply_node:
             Serial.println("No respondeu ao pedido de informacao.");
@@ -398,6 +397,7 @@ void onReceive(int packetSize) {
                     if(custo != tabela [i] [2]){
                         tabela [i] [2] = custo;
                     }
+                    i=linhas;
                 }
             }
             if(h == 0){
@@ -413,12 +413,9 @@ void onReceive(int packetSize) {
                     }
                 }
                 Serial.println("Adicionado a tabela.");
-                doing= "no ja reg.";
-            }
-            //malandragem.
-            menorCusto(ip_this_node,ip_this_node);
+                //malandragem.
+            }          
             Serial.println("pronto.");
-            doing= "pronto.";
             Serial.print("Repetidor: no");
             Serial.println(ip_repetidor);
             Serial.println("SendBlock!!!");
@@ -454,7 +451,6 @@ void onReceive(int packetSize) {
                         // 1 -> repetidor não deve ser requisitado para esse pacote.
                     }
                 }
-                menorCusto(origem,anterior);
             }
             Serial.println("Pronto, novo repetidor definido.");
             doing= "novo no def.";
@@ -477,7 +473,6 @@ void onReceive(int packetSize) {
                 }
             }
             doing = "no removido";
-            menorCusto(origem,anterior);
             Serial.println('<');
             Serial.println("Pronto, novo repetidor definido.");
             doing ="novo rpt def.";
@@ -618,10 +613,8 @@ void loop() {
     }
     // write the buffer to the display
     Heltec.display->display();
-    if(sendBlock == false && ip_repetidor != -1){
-        sendBlock = true;
-    }
-    if(millis()-lastCheck > 30000 && ip_this_node != ip_gateway && ip_repetidor != -1){
+ 
+    if(millis()-lastCheck > 30000 && ip_this_node != ip_gateway){
         //ler sensores
         Serial.println("Lendo sensores.");
         doing= "lendo senores.";
@@ -641,7 +634,8 @@ void loop() {
         else{
             Serial.println("Msg ja esta adicionada a fila.");
             doing = "msg ja reg.";
-        }     
+        }
+        /*     
         seta = list;   
         Serial.println("Lista:");
         while(seta->next != NULL){
@@ -650,6 +644,7 @@ void loop() {
             seta = seta->next;
         }
         Serial.println("fim");
+        */
         lastCheck = millis();
         
     }
@@ -664,14 +659,14 @@ void loop() {
             sendMsg(id_new_node,ip_this_node,ip_this_node,ip_broadcast,msg);
         }
     }
-    if(list->next != NULL && sendBlock == true && espera == false && ip_this_node != ip_gateway){
-        sendMessage();
+    if(list->next != NULL && espera == false && ip_this_node != ip_gateway){
+        menorCusto();
         espera = true;
         lastTime = millis();
         esperaTime = 20000;
-        tentativas_reenvio ++;
         Serial.println("Enviando mensagem da fila.");
         doing = "enviando msg";
+        sendMessage();
     }
 
     if(millis() - lastTime > esperaTime){
@@ -697,11 +692,11 @@ void loop() {
         doing = "rpt rmv.";
         sendMsg(id_connection_lost,ip_repetidor,ip_this_node,ip_broadcast,msg);
         Serial.println("Enviada msg para vizinhos informando perda de no.");
-        menorCusto(ip_this_node, ip_this_node);
         doing = "novo rpt def.";
         Serial.println("Novo repetidor definido.");
     }
     //Serial.println(String(ip_repetidor));
+    Serial.println("    "+String(tabela[0][0])+"    " +String(tabela[1][0])+"    "+String(tabela[2][0])+"    "+String(tabela[3][0])+"    "+String(tabela[4][0])+"    "+String(tabela[5][0])+"    " +String(tabela[6][0])+"    "+String(tabela[7][0])+"    "+String(tabela[8][0])+"    "+String(tabela[9][0])+"    "+String(tabela[10][0])+"    " +String(tabela[11][0])+"    "+String(tabela[12][0])+"    "+String(tabela[13][0])+"    "+String(tabela[14][0]));
 
     onReceive(LoRa.parsePacket());
 }
@@ -714,7 +709,9 @@ void sendMessage() {
     if(ip_repetidor == -1 ){
         Serial.println("Repetidor isolado.");
         Serial.println("Configurando retorno ao anterior com msg de erro [no way].");
-        sendMsg(id_repetidor_isolado,seta->next->orig,seta->next->ant,seta->next->ant,msg);
+        if(ip_this_node != seta->next->ant){
+            sendMsg(id_repetidor_isolado,seta->next->orig,seta->next->ant,seta->next->ant,msg);
+        }
         Serial.println("Enviado.");
         seta = lastOne();
         vetorFila[seta->next->orig] = false;
@@ -722,8 +719,8 @@ void sendMessage() {
         Serial.println("Msg removida da fila.");
         return;
     }
-    menorCusto(seta->next->orig,seta->next->ant);
     Serial.println("< pronto.");
+    tentativas_reenvio ++;
     sendMsg(ip_repetidor,seta->next->orig,ip_this_node,ip_repetidor,msg);
     Serial.println("Enviado.");
 }
