@@ -526,7 +526,7 @@ void onReceive(int packetSize) {
             // verifica se pacote está na fila.
             // se eu for o gateway isso resolve loop. 'nota mental'
             Serial.println("Verifica se msg ja esta na fila.");
-            if(vetorFila[origem] == true){
+            if(vetorFila[origem] == true && ip_this_node != ip_gateway){
                 Serial.println("Esta na fila de espera");
                 doing = "ja ta na fila";
                 sendMsg(id_ja_ta_aqui_a_msg,origem,anterior,anterior,msg);
@@ -542,7 +542,7 @@ void onReceive(int packetSize) {
                 }
             }
             // se chegar a 10 é porque não passou aqui.
-            if(i==10){
+            if(i==10  || ip_this_node == ip_gateway){
                 Serial.println("Nao.");
                 doing= "nova msg.";
                 addFila(origem,anterior);
@@ -595,7 +595,7 @@ void setup() {
     Heltec.display->clear();
     Heltec.display->drawXbm(24, 0, ballooncat_width, ballooncat_height, ballooncat_bits);
     Heltec.display->display();
-    delay(500);
+    delay(1500);
     Heltec.display->clear();
     Heltec.display->drawXbm(24, 0, curupira_width, curupira_height, curupira_bits);
     Heltec.display->display();
@@ -716,7 +716,6 @@ void loop() {
         doing = "enviando msg";
         sendMessage();
     }
-
     if(millis() - lastTime > esperaTime){
         espera = false;
         lastTime = millis();
@@ -772,3 +771,5 @@ void sendMessage() {
     sendMsg(ip_repetidor,seta->next->orig,ip_this_node,ip_repetidor,msg);
     Serial.println("Enviado.");
 }
+
+
