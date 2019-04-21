@@ -2,6 +2,12 @@
 #include "Arduino.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "bluetooth_img.h"
+#include "wifi_img.h"
+#include "radio_img.h"
+#include "bateria_img.h"
+#include "curupira.h"
+#include "ballooncat.h"
 
 //IP do gateway
 #define ip_gateway 0x00
@@ -10,7 +16,7 @@
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x08
+#define ip_this_node 0x00
 
 #define BAND    915E6  //you can set band here directly,e.g. 868E6,915E6
 #define linhas 15
@@ -45,6 +51,9 @@ int id;
 int tentativas_reenvio;
 int no_repetidor;
 
+bool wifi = false;
+bool bluetooth = false;
+bool radio_lora = false;
 bool freesend=false;
 byte confir[15][3];
 bool espera = false;
@@ -130,6 +139,22 @@ void drawFontFaceDemo() {
     }
     Heltec.display->drawString(0,40, "   nº viz:    "+String(nr_vizinhos));
     Heltec.display->drawString(0,54, ">"+doing);
+}
+void drawImage(int bateria) {
+   
+    for(int i =0 ; i< 6;i++){
+          Heltec.display->drawLine(117+i, 3 + bateria,117+i, 13);
+    }
+    Heltec.display->drawXbm(112, 0, bateria_width, bateria_height, bateria_bits);
+    if(radio_lora){
+      Heltec.display->drawXbm(112, 16, radio_width, radio_height, radio_bits);
+    } 
+    if(wifi){
+      Heltec.display->drawXbm(112, 32, wifi_width, wifi_height, wifi_bits);
+    }
+    if(bluetooth){
+      Heltec.display->drawXbm(112, 48, bluetooth_width, bluetooth_height, bluetooth_bits);
+    }
 }
 void showNos(){
     String vi[15];
@@ -299,6 +324,7 @@ void addFila( byte origem, byte anterior){
     }
 }
 void onReceive(int packetSize) {
+
     int i,h=0,marc=0;
       // clear the display 
     if (packetSize == 0) return;          // if there's no packet, return
@@ -328,7 +354,7 @@ void onReceive(int packetSize) {
         doing ="Nao eh pra mim";
         return;                           // skip rest of function
     }
-
+    radio_lora = true;
     switch (id) {
 
         case id_new_node:
@@ -561,17 +587,29 @@ void onReceive(int packetSize) {
 }
 void setup() {
     String msg = "dados";
-    int i,j;
+    int i,j,l=0;
     // WIFI Kit series V1 not support Vext control
     // Library sets automatically baud rate to 115200 in next line
     Heltec.begin(true /*DisplayEnable Enable*/, true /*Heltec.LoRa Disable*/, true /*Serial Enable*/, true /*PABOOST Enable*/, BAND /*long BAND*/);
-    Heltec.display->flipScreenVertically();
-    Heltec.display->setFont(ArialMT_Plain_10);
     
+    Heltec.display->clear();
+    Heltec.display->drawXbm(24, 0, ballooncat_width, ballooncat_height, ballooncat_bits);
+    Heltec.display->display();
+    delay(500);
+    Heltec.display->clear();
+    Heltec.display->drawXbm(24, 0, curupira_width, curupira_height, curupira_bits);
+    Heltec.display->display();
+    delay(2000);
+     
+    Heltec.display->drawLine(49+l, 61, 49+l, 63);
+    Heltec.display->display();
     lastSendTime = millis();
     Serial.println("Heltec.LoRa init succeeded.");
     vetorFila = (bool*)malloc(sizeof(bool)*15);
     for( i = 0; i< 15 ; i++){
+        l++;
+        Heltec.display->drawLine(49+l, 61, 49+l, 63);
+        Heltec.display->display();
         tabela [i] [0] = 0;
         tabela [i] [1] = -1;
         tabela [i] [2] = max;
@@ -579,6 +617,9 @@ void setup() {
     }
     buffer_conter=0;
     for(i=0;i<10;i++){
+        l++;
+        Heltec.display->drawLine(49+l, 61, 49+l, 63);
+        Heltec.display->display();
         buffer[i] = -1;
     }
     
@@ -586,11 +627,17 @@ void setup() {
     Serial.println("Enviando Broadcast.");
     doing= "atualizando rede.";
     for(i = 0 ;i < 5; i++){
+        l++;
+        Heltec.display->drawLine(49+l, 61, 49+l, 63);
+        Heltec.display->display();
         sendMsg(id_new_node,ip_this_node,ip_this_node,ip_broadcast,msg);
+        onReceive(LoRa.parsePacket());
     }
+    l++;
+    Heltec.display->drawLine(49+l, 61, 49+l, 63);
+    Heltec.display->display();
     lastCheck = millis();
     lastTime = millis();
-    onReceive(LoRa.parsePacket());
     list = (node*)malloc(sizeof(node));
     list->orig = 0;
     list->next = NULL;
@@ -604,6 +651,7 @@ void loop() {
     // draw the current demo method
     if(millis() - timeDraw < 10000){
         drawFontFaceDemo();
+        drawImage(0);
     }
     else if(millis() - timeDraw > 10000){
         showNos();
@@ -674,7 +722,7 @@ void loop() {
         lastTime = millis();
     }
 
-    if(tentativas_reenvio > 5 && ip_gateway != ip_repetidor){
+    if(tentativas_reenvio > 3 && ip_gateway != ip_repetidor){
         Serial.println("3 tres tentativas falharam.");
         doing = "3 tentativas fal.";
         tentativas_reenvio = 0;
@@ -696,7 +744,7 @@ void loop() {
         Serial.println("Novo repetidor definido.");
     }
     //Serial.println(String(ip_repetidor));
-    Serial.println("    "+String(tabela[0][0])+"    " +String(tabela[1][0])+"    "+String(tabela[2][0])+"    "+String(tabela[3][0])+"    "+String(tabela[4][0])+"    "+String(tabela[5][0])+"    " +String(tabela[6][0])+"    "+String(tabela[7][0])+"    "+String(tabela[8][0])+"    "+String(tabela[9][0])+"    "+String(tabela[10][0])+"    " +String(tabela[11][0])+"    "+String(tabela[12][0])+"    "+String(tabela[13][0])+"    "+String(tabela[14][0]));
+    //Serial.println("    "+String(tabela[0][0])+"    " +String(tabela[1][0])+"    "+String(tabela[2][0])+"    "+String(tabela[3][0])+"    "+String(tabela[4][0])+"    "+String(tabela[5][0])+"    " +String(tabela[6][0])+"    "+String(tabela[7][0])+"    "+String(tabela[8][0])+"    "+String(tabela[9][0])+"    "+String(tabela[10][0])+"    " +String(tabela[11][0])+"    "+String(tabela[12][0])+"    "+String(tabela[13][0])+"    "+String(tabela[14][0]));
 
     onReceive(LoRa.parsePacket());
 }
