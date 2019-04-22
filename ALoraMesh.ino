@@ -36,6 +36,8 @@ typedef struct Node{
 #define id_repetidor_loop       5
 #define id_resposta             6
 #define id_ja_ta_aqui_a_msg     7
+#define id_segunda_chance       8
+
 
 
 // tabela de vizinhos
@@ -57,7 +59,7 @@ bool radio_lora = false;
 bool freesend=false;
 byte confir[15][3];
 bool espera = false;
-
+bool isol = false;
 byte buffer[10];
 int  buffer_conter=0;
 bool *vetorFila;
@@ -282,6 +284,7 @@ void addFila( byte origem, byte anterior){
     }
     // não tem nós alem da origem e anterior. Não posso ser usado como repetidor por esse nó anterior.
     if(marc == 0){
+        isol = true;
         Serial.println('<');
         Serial.println("Repetidor isolado.");
         doing = "Repetidor isolado.";
@@ -384,6 +387,9 @@ void onReceive(int packetSize) {
                 if(h == 0){
                     Serial.println("Novo no.");
                     doing = "Novo no.";
+                    if(isol){
+                        sendMsg(id_segunda_chance,ip_this_node,ip_this_node,ip_broadcast,msg);
+                    }
                     for(i = 0; i< linhas; i ++){
                         if(tabela[i][1] == -1){
                             tabela [i] [1] = origem;
@@ -429,6 +435,9 @@ void onReceive(int packetSize) {
             if(h == 0){
                 Serial.println("Novo no.");
                 doing = "Novo no.";
+                if(isol){
+                    sendMsg(id_segunda_chance,ip_this_node,ip_this_node,ip_broadcast,msg);
+                }
                 for(i = 0; i< linhas; i ++){
                     if(tabela[i][1] == -1){
                         tabela [i] [1] = origem;
@@ -571,6 +580,22 @@ void onReceive(int packetSize) {
             seta->next = NULL;
             list->next = aux1;
             aux1->next = aux2;
+            break;
+        case id_segunda_chance:
+            Serial.println("segunda chance");
+            Serial.println(" Repetidor isolado.");
+
+            for(i = 0; i < linhas; i++){
+                //verificando em qual linha está o repetidor para desmarca-lo
+                if(origem == tabela[i][1] && tabela[i][0] != 2){
+                    i=linhas;
+                }
+                else if (origem == tabela[i][1] && tabela[i][0] == 2){
+                   tabela[i][0] = 0;
+                   i=linhas;
+                }
+            }
+            doing = "no desmarcado";
             break;
         default: 
             Serial.println("ID invalido");    
@@ -758,6 +783,7 @@ void sendMessage() {
         Serial.println("Configurando retorno ao anterior com msg de erro [no way].");
         if(ip_this_node != seta->next->ant){
             sendMsg(id_repetidor_isolado,seta->next->orig,seta->next->ant,seta->next->ant,msg);
+            isol = true;
         }
         Serial.println("Enviado.");
         seta = lastOne();
@@ -771,5 +797,6 @@ void sendMessage() {
     sendMsg(ip_repetidor,seta->next->orig,ip_this_node,ip_repetidor,msg);
     Serial.println("Enviado.");
 }
+
 
 
