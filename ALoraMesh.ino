@@ -1,13 +1,18 @@
+#include "soc/timer_group_struct.h"
+#include "soc/timer_group_reg.h"
 #include "heltec.h"
 #include "Arduino.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "bluetooth_img.h"
 #include "wifi_img.h"
 #include "radio_img.h"
 #include "bateria_img.h"
 #include "curupira.h"
 #include "ballooncat.h"
+
+TaskHandle_t Task1;
 
 //IP do gateway
 #define ip_gateway 0x00
@@ -16,19 +21,16 @@
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x00
+#define ip_this_node 0xb
+
+
+#define tam_msg 20
 
 #define BAND    915E6  //you can set band here directly,e.g. 868E6,915E6
 #define linhas 15
 #define colunas 3
 #define max 9999999
 
-typedef struct Node{
-    byte orig, ant;
-    struct Node *next;
-}node;
-
-// id do Algoritmo
 #define id_new_node             1
 #define id_reply_node           2
 #define id_connection_lost      3
@@ -37,6 +39,18 @@ typedef struct Node{
 #define id_resposta             6
 #define id_ja_ta_aqui_a_msg     7
 #define id_segunda_chance       8
+
+typedef struct Node{
+    byte orig, ant;
+    struct Node *next;
+}node;
+
+typedef struct Rec{
+    byte id, origem, anterior, destino;
+    char msg[tam_msg];
+    struct Rec *next;
+}rec_node;
+// id do Algoritmo
 
 
 
@@ -52,6 +66,9 @@ int sinal;
 int id;
 int tentativas_reenvio;
 int no_repetidor;
+bool isol = false;
+bool task2_usando = false;
+bool task1_usando = false;
 
 bool wifi = false;
 bool bluetooth = false;
@@ -59,11 +76,12 @@ bool radio_lora = false;
 bool freesend=false;
 byte confir[15][3];
 bool espera = false;
-bool isol = false;
+volatile bool IRS_use = false;
+
 byte buffer[10];
 int  buffer_conter=0;
 bool *vetorFila;
-int nVetor = 15;
+int nVetor = 15, recCont = 0;
 String doing;
 //variáveis do tipo string
 
@@ -74,9 +92,17 @@ int ip_repetidor = -1;
 byte ip_origem;
 byte ip_filho;
 
+byte tam_fila = 0;
+
 //Flags de envio e recebimento de pacotes
 bool sendBlock = false;
 bool ack_recebido = true;
+
+byte gId;
+int gOrigem;
+byte gAnterior;
+byte gDestino;
+String gMsg;
 
 String outgoing;              // outgoing message
 byte msgCount = 0;            // count of outgoing messages
@@ -88,8 +114,16 @@ long esperaTime = 20000;
 long timeDraw ;
 
 node *list,*seta,*aux1,*aux2;
+rec_node  *recebidos, *setaRec;
+
+// Para configurar seções críticas (interrupções de ativação e interrupções de desativação não disponíveis)
+// usado para desabilitar e interromper interrupções
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 void sendMsg(byte id, int origem, byte anterior, byte destino, String msg){
+    while(IRS_use);
+    //String msg = String(pacote);
+    //portENTER_CRITICAL_ISR(&mux);  //início da seção crítica
     LoRa.beginPacket();                   // start packet
     LoRa.write(id);              // ID de identificação
     LoRa.write(origem);                // Destino
@@ -98,10 +132,22 @@ void sendMsg(byte id, int origem, byte anterior, byte destino, String msg){
     LoRa.write(msg.length());
     LoRa.print(msg);                 // add payload
     LoRa.endPacket();
+    LoRa.receive();
+    //portEXIT_CRITICAL_ISR(&mux);
 }
 node *lastOne(){
     node *cur = list;
     node *aux;
+
+    while(cur->next != NULL){
+        aux = cur;
+        cur = cur->next;
+    }
+    return aux;
+}
+rec_node *lastRecOne(){
+    rec_node *cur = recebidos;
+    rec_node *aux;
 
     while(cur->next != NULL){
         aux = cur;
@@ -130,22 +176,22 @@ void drawFontFaceDemo() {
     Heltec.display->setFont(ArialMT_Plain_10);
     if(ip_this_node == ip_gateway){
         if(list->next != NULL){
-            Heltec.display->drawString(0,30, "   last rec Orig: "+ String(list->next->orig)+" ate: "+String(list->next->ant));
+            Heltec.display->drawString(0,30, "   last rec Orig "+ String(list->next->orig)+" ate "+String(list->next->ant));
         }
         else{
             Heltec.display->drawString(0,30, "   Fila vazia");
         }
     }
     else{
-        Heltec.display->drawString(0,30, "   no rep:   "+ repetidor);
+        Heltec.display->drawString(0,30, "   no rep   "+ repetidor);
     }
-    Heltec.display->drawString(0,40, "   nº viz:    "+String(nr_vizinhos));
+    Heltec.display->drawString(0,40, "   nº viz  "+String(nr_vizinhos)+"  tª fila "+String(tam_fila));
     Heltec.display->drawString(0,54, ">"+doing);
 }
 void drawImage(int bateria) {
    
     for(int i =0 ; i< 6;i++){
-          Heltec.display->drawLine(117+i, 3 + bateria,117+i, 13);
+        Heltec.display->drawLine(117+i, 3 + bateria,117+i, 13);
     }
     Heltec.display->drawXbm(112, 0, bateria_width, bateria_height, bateria_bits);
     if(radio_lora){
@@ -225,6 +271,20 @@ void menorCusto(){
     Serial.println("repetidor: "+String(ip_repetidor));
     doing = "repetidor def.";
 }
+void addRecList(byte id, int origem, byte anterior, byte destino, char msg[tam_msg]){
+
+    rec_node *cur=recebidos;
+    rec_node *newN=(rec_node *) malloc(sizeof(rec_node)); // cria novo nó.
+    rec_node *aux= recebidos->next;
+    newN->id = id;
+    newN->origem = origem;
+    newN->anterior = anterior;
+    newN->destino = destino;
+    strcpy(newN->msg,msg);
+    newN->next = aux; 
+    recebidos->next = newN;
+    Serial.println("msg Add");
+}
 void addList( byte origem, byte anterior){
     node *cur=list;
     node *newN=(node *) malloc(sizeof(node)); // cria novo nó.
@@ -234,6 +294,7 @@ void addList( byte origem, byte anterior){
     newN->ant = anterior;
     newN->next = aux; 
     list->next = newN;
+    tam_fila++;
     return; // retorna lista atualizada.
 }
 void delList (node *cur){
@@ -243,6 +304,19 @@ void delList (node *cur){
     //printf("%s\n",cur->title);
     node *file_before = cur;  // caso seja encontrado o elemento, um ponteiro auxiliar o salva enquando o elemento anterior a ele é atualizado para
     node *file_search_for = cur->next; // apontar para o elemento posteior ao elemento salvo.
+    cur=file_search_for->next;//cur vai para file após a procurada.
+    file_before->next = cur;//file anterior à search_for aponta para a música após ela. 
+    free(file_search_for);
+    tam_fila--;
+    doing = "msg deletada";
+}
+void delRecList (Rec *cur){
+    int i;
+    if(cur == NULL) // caso não seja encontrado, a respota da função anterior será null, nesse caso não é necessário deletar nada.
+        return;
+    //printf("%s\n",cur->title);
+    rec_node *file_before = cur;  // caso seja encontrado o elemento, um ponteiro auxiliar o salva enquando o elemento anterior a ele é atualizado para
+    rec_node *file_search_for = cur->next; // apontar para o elemento posteior ao elemento salvo.
     cur=file_search_for->next;//cur vai para file após a procurada.
     file_before->next = cur;//file anterior à search_for aponta para a música após ela. 
     free(file_search_for);
@@ -260,6 +334,7 @@ void addFila( byte origem, byte anterior){
         if((tabela [i] [1] == origem && tabela [i] [0] != 2) || (tabela [i] [1] == anterior && tabela [i] [0] != 2)){
             tabela [i] [0] = 1;
         }
+
     }
     for(i = 0; i < linhas; i++){
         //verificando se há nos além do anterior, origem e isolados.
@@ -273,7 +348,7 @@ void addFila( byte origem, byte anterior){
             tabela [i] [0] = 0;
         }
     }
-    if(marc == 0 && ip_gateway == ip_this_node){
+    if(ip_gateway == ip_this_node){
         Serial.println("Gateway responde.");
         doing = "Gateway responde..";
         Serial.println("Adiciona a fila de espera.");
@@ -283,7 +358,7 @@ void addFila( byte origem, byte anterior){
         return;
     }
     // não tem nós alem da origem e anterior. Não posso ser usado como repetidor por esse nó anterior.
-    if(marc == 0){
+    else if(marc == 0){
         isol = true;
         Serial.println('<');
         Serial.println("Repetidor isolado.");
@@ -326,38 +401,18 @@ void addFila( byte origem, byte anterior){
         */
     }
 }
-void onReceive(int packetSize) {
+void trataRecebidos(){
 
-    int i,h=0,marc=0;
-      // clear the display 
-    if (packetSize == 0) return;          // if there's no packet, return
-    String msg = "dados";
-    // read packet header bytes:
-    byte id = LoRa.read();          // destino address
-    int origem = LoRa.read();            // origem address
-    byte anterior = LoRa.read();
-    byte destino = LoRa.read();
-    byte incomingLength = LoRa.read();    // incoming msg length
-    String incoming = "";                 // payload of packet
-
-    // pega mensagem
-    while (LoRa.available()) {            // can't use readString() in callback
-        incoming += (char)LoRa.read();    // add bytes one by one
-    }
-    Serial.println("Msg recebida.");
-    doing ="msg recebida.";
-    //verifica se numero de caracteres bate com o numero de caracteres recebido na mensagem
-    if (incomingLength != incoming.length()) {  // check length for error
-        Serial.println("Erro na msg [leght no math]");
-        return;                           // skip rest of function
-    }
-    // if the destino isn't this device or ip_broadcast,
-    if (destino != ip_this_node && destino != ip_broadcast) {
-        Serial.println("Nao eh pra mim, erro [wrong address].");
-        doing ="Nao eh pra mim";
-        return;                           // skip rest of function
-    }
-    radio_lora = true;
+    //task1_usando = true;
+    setaRec = lastRecOne();
+    byte id = setaRec->next->id;
+    int origem = setaRec->next->origem;
+    byte anterior = setaRec->next->anterior;
+    byte destino =setaRec->next->destino;
+    String msg = String(setaRec->next->msg);
+    int i,h=0;
+    delRecList(setaRec);
+    //task1_usando = false;
     switch (id) {
 
         case id_new_node:
@@ -389,6 +444,7 @@ void onReceive(int packetSize) {
                     doing = "Novo no.";
                     if(isol){
                         sendMsg(id_segunda_chance,ip_this_node,ip_this_node,ip_broadcast,msg);
+                        isol = false;
                     }
                     for(i = 0; i< linhas; i ++){
                         if(tabela[i][1] == -1){
@@ -405,10 +461,12 @@ void onReceive(int packetSize) {
                     Serial.println("no ja registrado.");
                     doing= "no ja reg.";
                 }
+                
             }
             //malandragem.
             //o correto deveria enviar a origem e o anterior para calcular novo repetidor, mas dentro desse case eu posso
             // fazer isso.
+            LoRa.receive();
             break;
         case id_reply_node:
             Serial.println("No respondeu ao pedido de informacao.");
@@ -437,6 +495,7 @@ void onReceive(int packetSize) {
                 doing = "Novo no.";
                 if(isol){
                     sendMsg(id_segunda_chance,ip_this_node,ip_this_node,ip_broadcast,msg);
+                    isol = false;
                 }
                 for(i = 0; i< linhas; i ++){
                     if(tabela[i][1] == -1){
@@ -454,6 +513,7 @@ void onReceive(int packetSize) {
             Serial.print("Repetidor: no");
             Serial.println(ip_repetidor);
             Serial.println("SendBlock!!!");
+            LoRa.receive();
             break;
         case id_connection_lost: // perda de sinal
             doing = "no caiu";
@@ -468,6 +528,7 @@ void onReceive(int packetSize) {
                     nr_vizinhos--;
                 }
             }
+            LoRa.receive();
             break;
         case id_repetidor_loop:
             doing = "erro loop"; 
@@ -491,6 +552,7 @@ void onReceive(int packetSize) {
             doing= "novo no def.";
             Serial.print("Repetidor: ");
             Serial.println(ip_repetidor);
+            LoRa.receive();
             break;
         case id_repetidor_isolado:
             Serial.println("Erro [no way]");
@@ -513,6 +575,7 @@ void onReceive(int packetSize) {
             doing ="novo rpt def.";
             Serial.print("Repetidor: ");
             Serial.println(ip_repetidor);
+            LoRa.receive();
             break;
         case id_resposta:
             doing = "repetidor respondeu";
@@ -525,6 +588,7 @@ void onReceive(int packetSize) {
             delList(seta);
             Serial.println("Msg removida da fila.");
             doing = "msg remov. fila";
+            LoRa.receive();
             break;
         case ip_this_node:
             doing = "pedido para repetir";
@@ -556,13 +620,14 @@ void onReceive(int packetSize) {
                 doing= "nova msg.";
                 addFila(origem,anterior);
             }
-            else if(ip_this_node != ip_gateway){
+            else{
                 Serial.println("Sim.");
                 doing = "loop detec.";
                 Serial.println("Preparar msg de retorno ao anterior.");
                 sendMsg(id_repetidor_loop,origem,anterior,anterior,msg);
                 doing = "resp. envianda";
             }
+            LoRa.receive();
             break;
         case id_ja_ta_aqui_a_msg: // repetidor responde que já tem a msg.
             doing = "rpt ja tem msg";
@@ -580,6 +645,7 @@ void onReceive(int packetSize) {
             seta->next = NULL;
             list->next = aux1;
             aux1->next = aux2;
+            LoRa.receive();
             break;
         case id_segunda_chance:
             Serial.println("segunda chance");
@@ -596,27 +662,128 @@ void onReceive(int packetSize) {
                 }
             }
             doing = "no desmarcado";
+            LoRa.receive();
             break;
         default: 
             Serial.println("ID invalido");    
     }
-    // if message is for this device, or ip_broadcast, print details:
-    //Serial.println("Received from: 0x" + String(origem, HEX));
-    //Serial.println("Sent to: 0x" + String(destino, HEX));
-    //Serial.println("Message ID: " + String(incomingMsgId));
-    //Serial.println("Message length: " + String(incomingLength));
-    //Serial.println("Message: " + incoming);
-    //Serial.println("RSSI: " + String(LoRa.packetRssi()));
-    //Serial.println("Snr: " + String(LoRa.packetSnr()));
-    //Serial.println();
+}
+void task1(void *parameter){
+  
+    while(1){
+        TIMERG0.wdt_wprotect=TIMG_WDT_WKEY_VALUE;
+        TIMERG0.wdt_feed=1;
+        TIMERG0.wdt_wprotect=0;
+        if(LoRa.parsePacket()!=0){
+            task2_usando = true;
+            byte id         = LoRa.read();          // destino address
+            int  origem     = LoRa.read();            // origem address
+            byte anterior   = LoRa.read();
+            byte destino    = LoRa.read();
+            byte Length = LoRa.read();    // incoming msg length
+            char msg[tam_msg] = "";
+
+            // pega mensagem
+             int i=0;
+            while (LoRa.available()) {            // can't use readString() in callback
+                msg[i] += (char)LoRa.read();    // add bytes one by one
+                i++;
+            }
+            Serial.println("Msg recebida.");
+            doing ="msg recebida.";
+            //verifica se numero de caracteres bate com o numero de caracteres recebido na mensagem
+            if (Length != i) {  // check length for error
+                Serial.println("Erro na msg [leght no math]");
+                task2_usando = false;
+                return;                         // skip rest of function
+            }
+            // if the destino isn't this device or ip_broadcast,
+            if (destino != ip_this_node && destino != ip_broadcast) {
+                Serial.println("Nao eh pra mim, erro [wrong address].");
+                doing ="Nao eh pra mim";
+                task2_usando = false;
+                return;
+            }
+            addRecList(id, origem, anterior, destino, msg);
+            task2_usando = false;
+            Serial.println("oi!!");
+        }
+        delay(1);
+    }
+}
+void IRAM_ATTR msgIRT() {
+    portENTER_CRITICAL_ISR(&mux);
+        onReceive(LoRa.parsePacket());
+    portEXIT_CRITICAL_ISR(&mux);
+}
+void onReceive(int packetSize) {
+
+    int i=0,h=0,marc=0;
+      // clear the display 
+    if (packetSize == 0) return;          // if there's no packet, return
+    task2_usando = true;
+    byte id         = LoRa.read();          // destino address
+    int  origem     = LoRa.read();            // origem address
+    byte anterior   = LoRa.read();
+    byte destino    = LoRa.read();
+    byte Length     = LoRa.read();    // incoming msg length
+    char msg[tam_msg] = "";
+    
+    // pega mensagem
+    while (LoRa.available()) {            // can't use readString() in callback
+        msg[i] = (char)LoRa.read();    // add bytes one by one
+        i++;
+    }
+    Serial.println("Msg recebida.");
+    doing ="msg recebida.";
+    //verifica se numero de caracteres bate com o numero de caracteres recebido na mensagem
+    if (Length != i) {  // check length for error
+        Serial.println("Erro na msg [leght no math]");
+        task2_usando = false;
+        return;                         // skip rest of function
+    }
+    // if the destino isn't this device or ip_broadcast,
+    if (destino != ip_this_node && destino != ip_broadcast) {
+        Serial.println("Nao eh pra mim, erro [wrong address].");
+        doing ="Nao eh pra mim";
+        task2_usando = false;
+        return;
+    }
+    Serial.println("msg ok");
+    addRecList(id, origem, anterior, destino, msg);
+    return;
+}
+void sendMessage() {
+    int i,marc=0;
+    seta = lastOne();
+    String msg = "dados"; 
+    // tem mais nós além do repetidor e anterior.
+    // proximo teste é seguro.
+    if(ip_repetidor == -1 ){
+        Serial.println("Repetidor isolado.");
+        Serial.println("Configurando retorno ao anterior com msg de erro [no way].");
+        Serial.println("Enviado.");
+        seta = lastOne();
+        vetorFila[seta->next->orig] = false;
+        delList(seta);
+        Serial.println("Msg removida da fila.");
+        return;
+    }
+    Serial.println("< pronto.");
+    tentativas_reenvio ++;
+    sendMsg(ip_repetidor,seta->next->orig,ip_this_node,ip_repetidor,msg);
+    Serial.println("Enviado.");
 }
 void setup() {
     String msg = "dados";
     int i,j,l=0;
     // WIFI Kit series V1 not support Vext control
     // Library sets automatically baud rate to 115200 in next line
-    Heltec.begin(true /*DisplayEnable Enable*/, true /*Heltec.LoRa Disable*/, true /*Serial Enable*/, true /*PABOOST Enable*/, BAND /*long BAND*/);
+    Heltec.begin(true /*DisplayEnable Enable*/, true /*Heltec.LoRa Disable*/, true /*Serial Enable*/, true /*PABOOST Enable*/, BAND /*long BAND*/);   
     
+    //LoRa.onReceive(onReceive);
+    
+
     Heltec.display->clear();
     Heltec.display->drawXbm(24, 0, ballooncat_width, ballooncat_height, ballooncat_bits);
     Heltec.display->display();
@@ -629,6 +796,7 @@ void setup() {
     Heltec.display->drawLine(49+l, 61, 49+l, 63);
     Heltec.display->display();
     lastSendTime = millis();
+    attachInterrupt(digitalPinToInterrupt(26), msgIRT, RISING);
     Serial.println("Heltec.LoRa init succeeded.");
     vetorFila = (bool*)malloc(sizeof(bool)*15);
     for( i = 0; i< 15 ; i++){
@@ -647,33 +815,49 @@ void setup() {
         Heltec.display->display();
         buffer[i] = -1;
     }
-    
-    // verificando os nós vizinhos
-    Serial.println("Enviando Broadcast.");
-    doing= "atualizando rede.";
     for(i = 0 ;i < 5; i++){
         l++;
         Heltec.display->drawLine(49+l, 61, 49+l, 63);
         Heltec.display->display();
         sendMsg(id_new_node,ip_this_node,ip_this_node,ip_broadcast,msg);
-        onReceive(LoRa.parsePacket());
+        LoRa.receive();
     }
+    // verificando os nós vizinhos
+    Serial.println("Enviando Broadcast.");
+    doing= "atualizando rede.";
     l++;
     Heltec.display->drawLine(49+l, 61, 49+l, 63);
     Heltec.display->display();
     lastCheck = millis();
     lastTime = millis();
+    recebidos = (rec_node*)malloc(sizeof(rec_node));
+    recebidos->next = NULL;
     list = (node*)malloc(sizeof(node));
     list->orig = 0;
     list->next = NULL;
     Serial.println("Criada fila.");
     timeDraw = millis();
+    
+    /*
+    xTaskCreatePinnedToCore(
+    task1,           //Task Function.
+    "Task_1",               //name of task. 
+    8192,                   //Stack size of task.
+    NULL,                   // parameter of the task. 
+    1,                      // proiority of the task. 
+    NULL,                 // Task handel to keep tra ck of created task. 
+    0);
+    */
 }
 void loop() {
-  int i;
+    int i;
+    if(digitalRead(26)){
+      Serial.println("opa!");
+    }
     String msg = "dados"; 
     Heltec.display->clear();
     // draw the current demo method
+    //Serial.println("task1 core " +String(xPortGetCoreID()));
     if(millis() - timeDraw < 10000){
         drawFontFaceDemo();
         drawImage(0);
@@ -686,7 +870,15 @@ void loop() {
     }
     // write the buffer to the display
     Heltec.display->display();
- 
+
+    if(recebidos->next != NULL){
+        radio_lora = true;
+        trataRecebidos();
+    }
+    else{
+            radio_lora = false;
+    }
+
     if(millis()-lastCheck > 30000 && ip_this_node != ip_gateway){
         //ler sensores
         Serial.println("Lendo sensores.");
@@ -719,7 +911,6 @@ void loop() {
         Serial.println("fim");
         */
         lastCheck = millis();
-        
     }
     if(millis() - lastSendTime > 60000){
         
@@ -744,11 +935,12 @@ void loop() {
     if(millis() - lastTime > esperaTime){
         espera = false;
         lastTime = millis();
+
     }
 
-    if(tentativas_reenvio > 3 && ip_gateway != ip_repetidor){
-        Serial.println("3 tres tentativas falharam.");
-        doing = "3 tentativas fal.";
+    if(tentativas_reenvio > 5 && ip_gateway != ip_repetidor){
+        Serial.println("5 tres tentativas falharam.");
+        doing = "5 tentativas fal.";
         tentativas_reenvio = 0;
 
         Serial.println("Procurando no repetidor na tabela.");
@@ -761,42 +953,11 @@ void loop() {
                 Serial.println("Removido.");
             }
         }
-        doing = "rpt rmv.";
+        //doing = "rpt rmv.";
         sendMsg(id_connection_lost,ip_repetidor,ip_this_node,ip_broadcast,msg);
         Serial.println("Enviada msg para vizinhos informando perda de no.");
         doing = "novo rpt def.";
         Serial.println("Novo repetidor definido.");
+
     }
-    //Serial.println(String(ip_repetidor));
-    //Serial.println("    "+String(tabela[0][0])+"    " +String(tabela[1][0])+"    "+String(tabela[2][0])+"    "+String(tabela[3][0])+"    "+String(tabela[4][0])+"    "+String(tabela[5][0])+"    " +String(tabela[6][0])+"    "+String(tabela[7][0])+"    "+String(tabela[8][0])+"    "+String(tabela[9][0])+"    "+String(tabela[10][0])+"    " +String(tabela[11][0])+"    "+String(tabela[12][0])+"    "+String(tabela[13][0])+"    "+String(tabela[14][0]));
-
-    onReceive(LoRa.parsePacket());
 }
-void sendMessage() {
-    int i,marc=0;
-    seta = lastOne();
-    String msg = "dados"; 
-    // tem mais nós além do repetidor e anterior.
-    // proximo teste é seguro.
-    if(ip_repetidor == -1 ){
-        Serial.println("Repetidor isolado.");
-        Serial.println("Configurando retorno ao anterior com msg de erro [no way].");
-        if(ip_this_node != seta->next->ant){
-            sendMsg(id_repetidor_isolado,seta->next->orig,seta->next->ant,seta->next->ant,msg);
-            isol = true;
-        }
-        Serial.println("Enviado.");
-        seta = lastOne();
-        vetorFila[seta->next->orig] = false;
-        delList(seta);
-        Serial.println("Msg removida da fila.");
-        return;
-    }
-    Serial.println("< pronto.");
-    tentativas_reenvio ++;
-    sendMsg(ip_repetidor,seta->next->orig,ip_this_node,ip_repetidor,msg);
-    Serial.println("Enviado.");
-}
-
-
-
