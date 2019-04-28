@@ -21,7 +21,7 @@ TaskHandle_t Task1;
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x09
+#define ip_this_node 0x0b
 
 
 #define tam_msg 20
@@ -60,6 +60,7 @@ int tabela [linhas][colunas];
 //variáveis do tipo inteiro
 int nr_vizinhos = 0;
 byte nr_vizinhos_on = 0;
+byte estado =0;
 int custo;
 int contador;
 int contador_linhas;
