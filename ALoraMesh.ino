@@ -366,6 +366,13 @@ void trataRecebidos(){
                     tabela [i] [0] = 1;
                 }
             }
+            seta= lastOne();
+            menorCusto(seta->next->orig,seta->next->ant);
+            espera = true;
+            lastTime = millis();
+            esperaTime = random(2000) + 20000;
+            doing = "enviando msg";
+            sendMessage();
             break;
         case id_repetidor_isolado:
             doing = "rpt isolado";
@@ -443,6 +450,24 @@ void trataRecebidos(){
                 }
             }
             doing = "no desmarcado";
+            break;
+        case id_i_wake_up:
+            doing ="pedido novo no.";
+            //requisição de um novo nó na rede
+            //montagem do pacote de dados com a resposta à requisição
+            sendMsg(id_reply_node,ip_this_node,ip_this_node,origem,msg);
+            for(i = 0; i < linhas; i++){
+                //verificando em qual linha está o repetidor para desmarca-lo
+                if(origem == tabela[i][1] && tabela[i][0] != 2){
+                    i=linhas;
+                }
+                else if (origem == tabela[i][1] && tabela[i][0] == 2){
+                   tabela[i][0] = 0;
+                   i=linhas;
+                }
+            }
+            custo = Heltec.LoRa.packetRssi() * -1;
+            verificaNos(origem, anterior , custo);
             break;
         default:
         break;
@@ -694,7 +719,7 @@ void setup() {
         l++;
         Heltec.display->drawLine(49+l, 61, 49+l, 63);
         Heltec.display->display();
-        sendMsg(id_new_node,ip_this_node,ip_this_node,ip_broadcast,msg);
+        sendMsg(id_i_wake_up,ip_this_node,ip_this_node,ip_broadcast,msg);
     }
     // verificando os nós vizinho
     doing= "atualizando rede.";
@@ -771,4 +796,6 @@ void loop() {
         estateMachine();
     }
 }
+
+
 

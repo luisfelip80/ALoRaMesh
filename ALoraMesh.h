@@ -21,7 +21,7 @@ TaskHandle_t Task1;
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x0b
+#define ip_this_node 0x0a
 
 
 #define tam_msg 20
@@ -39,6 +39,7 @@ TaskHandle_t Task1;
 #define id_resposta             6
 #define id_ja_ta_aqui_a_msg     7
 #define id_segunda_chance       8
+#define id_i_wake_up            9
 
 typedef struct Node{
     byte orig, ant;
@@ -122,5 +123,6 @@ rec_node  *recebidos, *setaRec;
 // Para configurar seções críticas (interrupções de ativação e interrupções de desativação não disponíveis)
 // usado para desabilitar e interromper interrupções
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
 
 
