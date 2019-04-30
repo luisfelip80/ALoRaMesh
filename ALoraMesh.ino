@@ -1,4 +1,4 @@
-#include "ALoraMesh.h"
+#include "LoraMesh.h"
 
 void sendMsg(byte id, int origem, byte anterior, byte destino, String msg){
     while(IRS_use);
@@ -260,10 +260,11 @@ void addFila( byte origem, byte anterior){
         else{
             vetorFila[origem] = true;
         }
-        if(buffer_conter==10){
+        if(buffer_conter == 10){
             buffer_conter = 0;
         }
-        buffer[buffer_conter] = origem;
+        buffer[buffer_conter] [0] = origem;
+        buffer[buffer_conter] [1] = anterior;
         buffer_conter++;
         // responder ao anterior.
         sendMsg(id_resposta,origem,ip_this_node,anterior,msg);
@@ -325,7 +326,7 @@ void trataRecebidos(){
     //task1_usando = false;
     switch (id) {
 
-        case id_new_node:
+        case id_new_node: //alguém pediu para ser resgistrado.
             doing ="pedido novo no.";
             //requisição de um novo nó na rede
             //montagem do pacote de dados com a resposta à requisição
@@ -333,7 +334,7 @@ void trataRecebidos(){
             custo = Heltec.LoRa.packetRssi() * -1;
             verificaNos(origem, anterior , custo);
             break;
-        case id_reply_node:
+        case id_reply_node: // responderam ao meu pedido de novo nó.
             doing ="respondeu requisicao";
             //nó respondeu à requisição de informação sobre o seu custo
             // custo
@@ -355,7 +356,7 @@ void trataRecebidos(){
                 }
             }
             break;
-        case id_repetidor_loop:
+        case id_repetidor_loop: // nó que eu pedi para repetir respondende falando que já reétiu essa mensagem para outro nó.
             doing = "erro loop";
             tentativas_reenvio = 0;
             esperaTime=0;
@@ -366,15 +367,13 @@ void trataRecebidos(){
                     tabela [i] [0] = 1;
                 }
             }
-            seta= lastOne();
-            menorCusto(seta->next->orig,seta->next->ant);
             espera = true;
             lastTime = millis();
             esperaTime = random(2000) + 20000;
             doing = "enviando msg";
             sendMessage();
             break;
-        case id_repetidor_isolado:
+        case id_repetidor_isolado: //nó que fiz o pedido para repetir responde falando que não pode repetir.
             doing = "rpt isolado";
             tentativas_reenvio = 0;
             esperaTime=0;
@@ -386,15 +385,15 @@ void trataRecebidos(){
                 }
             }
             break;
-        case id_resposta:
+        case id_resposta: //outro nó respondeu meu pedido de repetir com um OK!
             doing = "repetidor respondeu";
             tentativas_reenvio=0;
-            esperaTime = random(2000) + 50000;    
+            esperaTime = random(2000) + 50000;
             seta = lastOne();
             vetorFila[seta->next->orig] = false;
             delList(seta);
             break;
-        case ip_this_node:
+        case ip_this_node: //pedido para repetir msg
             doing = "pedido para repetir";
             verificaNos(origem, anterior , custo);
             //verifica se já está na fila.
@@ -407,8 +406,9 @@ void trataRecebidos(){
                 break;
             }
             //verifica se já passou aqui.
+            // caso seja da mesma origem mas venha de um outro nó anterior, essa mensagem vai entrar em loop.
             for(i = 0 ; i < 10 ; i++){
-                if(buffer[i] == origem){
+                if(buffer[i][0] == origem && buffer[i][1] != anterior){
                     i = 11;// chave de controle
                 }
             }
@@ -437,7 +437,7 @@ void trataRecebidos(){
             list->next = aux1;
             aux1->next = aux2;
             break;
-        case id_segunda_chance:
+        case id_segunda_chance: // nó que eu isolei está pedindo uma nova chance pois ele fez uma nova conexão.
 
             for(i = 0; i < linhas; i++){
                 //verificando em qual linha está o repetidor para desmarca-lo
@@ -451,7 +451,7 @@ void trataRecebidos(){
             }
             doing = "no desmarcado";
             break;
-        case id_i_wake_up:
+        case id_i_wake_up: // nó que acabou de acordar pede para ser registrado.
             doing ="pedido novo no.";
             //requisição de um novo nó na rede
             //montagem do pacote de dados com a resposta à requisição
@@ -597,7 +597,6 @@ void tela(){
     if(millis() - timeDraw > 20000){
         timeDraw = millis();
     }
-    // write the buffer to the display
     Heltec.display->display();
 }
 void estateMachine(){
@@ -617,9 +616,6 @@ void estateMachine(){
             }
           break;
         case 1:// enviar msg da fila se houver.
-            
-            seta = lastOne();
-            menorCusto(seta->next->orig, seta-> next->ant);
             espera = true;
             lastTime = millis();
             esperaTime = random(2000) + 20000;
@@ -713,7 +709,8 @@ void setup() {
         l++;
         Heltec.display->drawLine(49+l, 61, 49+l, 63);
         Heltec.display->display();
-        buffer[i] = -1;
+        buffer[i][0] = -1;
+        buffer[i][1] = -1;
     }
     for(i = 0 ;i < 5; i++){
         l++;
@@ -796,6 +793,3 @@ void loop() {
         estateMachine();
     }
 }
-
-
-
