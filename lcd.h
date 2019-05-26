@@ -4,6 +4,7 @@
 #include "imagens/bateria_img.h"
 #include "imagens/curupira.h"
 #include "imagens/ballooncat.h"
+#include "imagens/repetidor.h"
 
 
 void showNos(int linhas, int tabela[15][3], String doing){
@@ -62,29 +63,32 @@ void drawFontFaceDemo(int ip_repetidor,byte ip_gateway, byte ip_this_node, int n
     Heltec.display->drawString(0,40, "   nº viz  "+String(nr_vizinhos)+"  tª fila "+String(tam_fila));
     Heltec.display->drawString(0,54, ">"+doing);
 }
-void drawImage(int bateria, bool radio_lora, bool wifi, bool bluetooth) {
+void drawImage(int bateria, bool radio_lora, bool wifi, bool bluetooth, bool repetidor) {
    
     for(int i =0 ; i< 6;i++){
         Heltec.display->drawLine(117+i, 3 + bateria,117+i, 13);
     }
     Heltec.display->drawXbm(112, 0, bateria_width, bateria_height, bateria_bits);
     if(radio_lora){
-      Heltec.display->drawXbm(112, 16, radio_width, radio_height, radio_bits);
+        Heltec.display->drawXbm(112, 16, radio_width, radio_height, radio_bits);
     } 
     if(wifi){
-      Heltec.display->drawXbm(112, 32, wifi_width, wifi_height, wifi_bits);
+        Heltec.display->drawXbm(112, 32, wifi_width, wifi_height, wifi_bits);
     }
     if(bluetooth){
-      Heltec.display->drawXbm(112, 48, bluetooth_width, bluetooth_height, bluetooth_bits);
+        Heltec.display->drawXbm(112, 48, bluetooth_width, bluetooth_height, bluetooth_bits);
+    }
+    if(repetidor){
+        Heltec.display->drawXbm(90, 0, repetidor_width, repetidor_height, repetidor_bits);               
     }
 }
-int tela(int timeDraw,int ip_repetidor,byte ip_gateway, byte ip_this_node, int nr_vizinhos, int tam_fila, int linhas, int tabela[15][3], String doing,bool radio_lora, bool wifi, bool bluetooth, int orig, int ant){
+int tela(int timeDraw,int ip_repetidor,byte ip_gateway, byte ip_this_node, int nr_vizinhos, int tam_fila, int linhas, int tabela[15][3], String doing,bool radio_lora, bool wifi, bool bluetooth,bool repetidor, int orig, int ant){
     Heltec.display->clear();
     // draw the current demo method
     //Serial.println("task1 core " +String(xPortGetCoreID()));
     if(millis() - timeDraw < 10000){
         drawFontFaceDemo( ip_repetidor, ip_gateway, ip_this_node, nr_vizinhos, tam_fila, doing, orig, ant);
-        drawImage(0, radio_lora, wifi, bluetooth);
+        drawImage(0, radio_lora, wifi, bluetooth,repetidor);
     }
     else if(millis() - timeDraw > 10000){
         showNos( linhas, tabela, doing);

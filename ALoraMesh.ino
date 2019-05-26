@@ -13,16 +13,40 @@ void trataRecebidos(){
     delRecList(setaRec);
     //task1_usando = false;
     switch (id) {
+        case ID_TALK:
+            my_turn_to_talk = true;
+            break;
+        case ID_WAIT:
+            my_turn_to_talk = false;
+            TIME_FOR_I_TALK = millis();
+            break;
+        case ID_REPLY_CALL: // alguém me pediu para registrar ele como possível requisidor de repetições (eu vou repetir o sinal dele).
 
-        case id_new_node: //alguém pediu para ser resgistrado.
+            t = testaVizinhos(origem, anterior);
+            if(t == false){ // eu estou isolado
+                sendMsg(ID_REPETIDOR_ISOLADO, origem ,ip_this_node, anterior, msg);
+                doing = "ped. reply negado";
+                break;
+            }
+            for(i=0;i<15;i++){
+                if(repetidores[i] [0] == 0){
+                    repetidores[i] [0] = origem;
+                    nr_repetidores++;
+                    i = 15;
+                }
+            }
+            repetidor_bool = true;
+            doing = "ped. reply ok";
+            break;
+        case ID_NEW_NODE: //alguém pediu para ser resgistrado.
             doing ="pedido novo no.";
             //requisição de um novo nó na rede
             //montagem do pacote de dados com a resposta à requisição
-            sendMsg(id_reply_node,ip_this_node,ip_this_node,origem,msg);
+            sendMsg(ID_CALLBACK,ip_this_node,ip_this_node,origem,msg);
             custo = Heltec.LoRa.packetRssi() * -1;
             verificaNos(origem, anterior , custo);
             break;
-        case id_reply_node: // responderam ao meu pedido de novo nó.
+        case ID_CALLBACK: // responderam ao meu pedido de novo nó.
             doing ="respondeu requisicao";
             //nó respondeu à requisição de informação sobre o seu custo
             // custo
@@ -32,10 +56,14 @@ void trataRecebidos(){
             //inclusão do nó na tabela
             verificaNos(origem, anterior , custo);
             break;
-        case id_connection_lost: // perda de sinal
+        case ID_LOST_CONNECTION: // perda de sinal
             doing = "no caiu";
             //verificando em qual linha está este nó
             for(i = 0; i<linhas; i++){
+                if(origem == repetidores[i][0]){
+                    repetidores[i] [0] = 0;
+                    nr_repetidores --;
+                }
                 if(origem == tabela[i][1]){
                     tabela [i] [0] = 0;
                     tabela [i] [1] = -1;
@@ -44,7 +72,7 @@ void trataRecebidos(){
                 }
             }
             break;
-        case id_repetidor_loop: // nó que eu pedi para repetir respondende falando que já reétiu essa mensagem para outro nó.
+        case ID_REPETIDOR_LOOP: // nó que eu pedi para repetir respondende falando que já reétiu essa mensagem para outro nó.
             doing = "erro loop";
             tentativas_reenvio = 0;
             for(i = 0; i < linhas; i++){
@@ -58,9 +86,8 @@ void trataRecebidos(){
             lastTime = millis();
             esperaTime = random(20000) + proximoEnvio;
             doing = "enviando msg";
-            sendMessage(list);
             break;
-        case id_repetidor_isolado: //nó que fiz o pedido para repetir responde falando que não pode repetir.
+        case ID_REPETIDOR_ISOLADO: //nó que fiz o pedido para repetir responde falando que não pode repetir.
             doing = "rpt isolado";
             tentativas_reenvio = 0;
             espera = true;
@@ -73,7 +100,7 @@ void trataRecebidos(){
                 }
             }
             break;
-        case id_resposta: //outro nó respondeu meu pedido de repetir com um OK!
+        case ID_RESPOSTA: //outro nó respondeu meu pedido de repetir com um OK!
             doing = "repetidor respondeu";
             tentativas_reenvio=0;
             espera = true;
@@ -83,7 +110,12 @@ void trataRecebidos(){
             delList(seta);
             tam_fila--;
             break;
-        case ip_this_node: //pedido para repetir msg
+        case ID_REPLY_ASK: //pedido para repetir msg
+            if(anterior != repetidores[vez][0]){
+                doing ="fora de hora";
+                sendMsg(ID_WAIT, ip_this_node, ip_this_node, anterior, msg);
+                break;
+            }
             doing = "pedido para repetir";
             verificaNos(origem, anterior , custo);
             //verifica se já está na fila.
@@ -92,7 +124,7 @@ void trataRecebidos(){
             // se eu for o gateway isso resolve loop. 'nota mental'
             if(vetorFila[origem] == true && ip_this_node != ip_gateway){
                 doing = "ja ta na fila";
-                sendMsg(id_ja_ta_aqui_a_msg,origem,anterior,anterior,msg);
+                sendMsg(ID_JA_TA_AQUI_A_MSG,origem,anterior,anterior,msg);
                 break;
             }
             //verifica se já passou aqui.
@@ -127,14 +159,18 @@ void trataRecebidos(){
                     buffer[buffer_conter] [1] = anterior;
                     buffer_conter++;
                 }
-                sendMsg(id_resposta,ip_this_node,ip_this_node,anterior,msg);
+                sendMsg(ID_RESPOSTA,ip_this_node,ip_this_node,anterior,msg);
             }
             else{
                 doing = "loop detec.";
-                sendMsg(id_repetidor_loop,origem,ip_this_node,anterior,msg);
+                sendMsg(ID_REPETIDOR_LOOP,origem,ip_this_node,anterior,msg);
+                if(origem == repetidores[i][0]){
+                    repetidores[i][0] = 0;
+                    nr_repetidores --;
+                }
             }
             break;
-        case id_ja_ta_aqui_a_msg: // repetidor responde que já tem a msg.
+        case ID_JA_TA_AQUI_A_MSG: // repetidor responde que já tem a msg.
             doing = "rpt ja tem msg";
             // repetidor já tem a mensagem com ele.
             //move msg para final da fila.
@@ -150,7 +186,7 @@ void trataRecebidos(){
             list->next = aux1;
             aux1->next = aux2;
             break;
-        case id_segunda_chance: // nó que eu isolei está pedindo uma nova chance pois ele fez uma nova conexão.
+        case ID_SEGUNDA_CHANCE: // nó que eu isolei está pedindo uma nova chance pois ele fez uma nova conexão.
 
             for(i = 0; i < linhas; i++){
                 //verificando em qual linha está o repetidor para desmarca-lo
@@ -164,11 +200,11 @@ void trataRecebidos(){
             }
             doing = "no desmarcado";
             break;
-        case id_i_wake_up: // nó que acabou de acordar pede para ser registrado.
+        case ID_I_WAKE_UP: // nó que acabou de acordar pede para ser registrado.
             doing ="pedido novo no.";
             //requisição de um novo nó na rede
             //montagem do pacote de dados com a resposta à requisição
-            sendMsg(id_reply_node,ip_this_node,ip_this_node,origem,msg);
+            sendMsg(ID_CALLBACK,ip_this_node,ip_this_node,origem,msg);
             for(i = 0; i < linhas; i++){
                 //verificando em qual linha está o repetidor para desmarca-lo
                 if(origem == tabela[i][1] && tabela[i][0] != 2){
@@ -217,7 +253,7 @@ void onReceive(int packetSize) {
         IRS_use = false;
         return;
     }
-    Serial.println("Msg recebida. " + String(id) + String(msg));
+    Serial.println("Msg recebida. id: " + String(id)+" msg " + String(msg));
     doing ="msg recebida.";
     addRecList(id, origem, anterior, destino, msg);
     IRS_use = false;
@@ -232,25 +268,95 @@ void estateMachine(){
             
             //onReceive(LoRa.parsePacket());
             if(list->next == NULL){
-                timeDraw = tela(timeDraw, ip_repetidor, ip_gateway, ip_this_node, nr_vizinhos, tam_fila, linhas, tabela, doing, radio_lora, wifi, bluetooth,0,0); // atualiza tela
+                timeDraw = tela(timeDraw, ip_repetidor, ip_gateway, ip_this_node, nr_vizinhos, tam_fila, linhas, tabela, doing, radio_lora, wifi, bluetooth,repetidor_bool,0,0); // atualiza tela
             }
             else{
-                timeDraw = tela(timeDraw, ip_repetidor, ip_gateway, ip_this_node, nr_vizinhos, tam_fila, linhas, tabela, doing, radio_lora, wifi, bluetooth, list->next->orig, list->next->ant);
+                timeDraw = tela(timeDraw, ip_repetidor, ip_gateway, ip_this_node, nr_vizinhos, tam_fila, linhas, tabela, doing, radio_lora, wifi, bluetooth, repetidor_bool, list->next->orig, list->next->ant);
             }
+
             if(recebidos->next != NULL){ // se tiver msg recebida, tratar
                 radio_lora = true;
                 trataRecebidos();
             }
+
+            if(nr_repetidores > 0){
+                if(millis() - HEAR_TIME >= 60000){ // escolher quem fala, quem eu vou ouvir.
+                                    
+                    for(i=0; i<15 && repetidores[i][1] == 0 ;i++); // procura marcação [i][1] == 1, era quem eu estava ouvindo.
+                
+                    if(i<15){//achei de quem era a vez.    
+                        sendMsg(ID_WAIT, ip_this_node, ip_this_node, repetidores[i][0] , msg);
+                        repetidores[i][1] = 0;
+                        i++;
+                        if(i>=15){
+                            i=0;
+                        }
+                        while(repetidores[i][0] == 0){ // vou dar uma volta circular no vetor de repetidores para ver se tem outro requisitor.
+                            i++;
+                            if(i>=15){
+                                i=0;
+                            }
+                        }
+                        sendMsg(ID_TALK, ip_this_node, ip_this_node, repetidores[i][0] , msg);
+                        vez = i;
+                    }
+                    else{// Eu não estava ouvindo ninguém, vamos achar alguém, se houver.
+                        for(i=0; i<15 && repetidores[i][0] == 0 ;i++); //Deve haver pois nr_repetidores tem que ser > 0 para entrar aqui  
+                        if(i<15){    
+                            repetidores[i][1] = 1; // marca que estou ouvindo ele.
+                            sendMsg(ID_TALK, ip_this_node, ip_this_node, repetidores[i][0] , msg);        
+                            vez = i;
+                        }
+                    }
+                    HEAR_TIME = millis();
+                }
+            }
             else{
+                repetidor_bool = false;
+            }
+            if(nr_vizinhos == 0 || ip_repetidor == -1){
                 radio_lora = false;
             }
           break;
         case 1:// enviar msg da fila se houver.
-            espera = true;
-            lastTime = millis();
-            esperaTime = random(20000) + proximoEnvio;
-            doing = "enviando msg";
-            sendMessage(list);
+            if(my_turn_to_talk){
+                //if(repetidores[vez][0]!=0){
+                //    sendMsg(ID_WAIT, ip_this_node, ip_this_node, repetidores[vez][0] , msg);
+                //}
+
+                TIME_FOR_I_TALK = millis();
+                espera = true;
+                lastTime = millis();
+                esperaTime = random(20000) + proximoEnvio;
+                doing = "enviando msg";
+                sendMessage(list);
+
+                //if(repetidores[vez][0]!=0){
+                //    sendMsg(ID_TALK, ip_this_node, ip_this_node, repetidores[vez][0] , msg);    
+                //}
+            }
+            else if (millis() - TIME_FOR_I_TALK >= 180000){
+                seta = lastOne(list);
+                menorCusto(seta->next->orig, seta->next->ant);
+                if(ant_repetidor == ip_repetidor && ip_repetidor != -1){
+                    tentativas_reenvio++;
+                    sendMsg(ID_REPLY_CALL, ip_this_node, ip_this_node, ip_repetidor, msg);
+                }
+                else if(ip_repetidor == -1){
+                    doing = "Repetidor isolado";
+                    if(ip_this_node != seta->next->ant){
+                        isol = true;
+                        for(i=0; i < 2; i++){
+                            sendMsg(ID_REPETIDOR_ISOLADO, seta->next->orig, ip_this_node, seta->next->ant, msg);
+                        }
+                    }        
+                    seta = lastOne(list);
+                    vetorFila[seta->next->orig] = false;
+                    delList(seta);
+                    tam_fila--;
+                }
+                TIME_FOR_I_TALK = millis();
+            }
             break;
         case 2:// contagem de tentativas
             tentativas_reenvio = 0;
@@ -258,15 +364,16 @@ void estateMachine(){
                 break;
             }
             for(i = 0; i<linhas; i++){
-                if(ip_repetidor == tabela[i][1]){
+                if(ip_repetidor == tabela[i][1] && tabela[i][1] != -1){
                     tabela [i] [0] = 0;
                     tabela [i] [1] = -1;
                     tabela [i] [2] = max;
-                    nr_vizinhos --;
+                    nr_vizinhos--;
+                    i=linhas;
                 }
             }
             //doing = "rpt rmv.";
-            sendMsg(id_connection_lost,ip_repetidor,ip_this_node,ip_broadcast,msg);
+            sendMsg(ID_LOST_CONNECTION, ip_repetidor,ip_this_node,ip_broadcast,msg);
             doing = "novo rpt def.";
             break;
         case 3: // 
@@ -278,10 +385,8 @@ void estateMachine(){
                     nVetor = ip_this_node+1;
                     vetorFila = (bool*)realloc(vetorFila, sizeof(bool)*nVetor);
                     vetorFila[ip_this_node] = true;
-                    Serial.println("opa");
                 }
                 else{
-                    Serial.println("rola");
                     vetorFila[ip_this_node] = true;
                 }
                 doing = "msg add fila.";
@@ -296,8 +401,8 @@ void estateMachine(){
             // atualiza rede.
             doing= "atualizando rede.";
             lastSendTime = millis();
-            for(int i =0 ;i<5 ;i++){
-                sendMsg(id_new_node,ip_this_node,ip_this_node,ip_broadcast,msg);
+            for(int i =0 ;i<2 ;i++){
+                sendMsg(ID_NEW_NODE,ip_this_node,ip_this_node,ip_broadcast,msg);
             }
             break;
         default:
@@ -333,6 +438,8 @@ void setup() {
     vetorFila = (bool*)malloc(sizeof(bool)*15);
     for( i = 0; i< 15 ; i++){
         l++;
+        repetidores[i] [0] = 0;
+        repetidores[i] [1] = 0;
         Heltec.display->drawLine(49+l, 61, 49+l, 63);
         Heltec.display->display();
         tabela [i] [0] = 0;
@@ -352,7 +459,7 @@ void setup() {
         l++;
         Heltec.display->drawLine(49+l, 61, 49+l, 63);
         Heltec.display->display();
-        sendMsg(id_i_wake_up,ip_this_node,ip_this_node,ip_broadcast,msg);
+        sendMsg(ID_I_WAKE_UP,ip_this_node,ip_this_node,ip_broadcast,msg);
     }
     // verificando os nós vizinho
     doing= "atualizando rede.";
@@ -361,6 +468,8 @@ void setup() {
     Heltec.display->display();
     lastCheck = millis();
     lastTime = millis();
+    TIME_FOR_I_TALK = millis();
+    HEAR_TIME = millis();
     recebidos = (rec_node*)malloc(sizeof(rec_node));
     recebidos->next = NULL;
     list = (node*)malloc(sizeof(node));
@@ -403,7 +512,7 @@ void loop() {
     }
     else if(estado == 1){
         
-        if(tentativas_reenvio > 5){
+        if(tentativas_reenvio >= 5){
             estado = 2;
         }
         else {
@@ -416,7 +525,10 @@ void loop() {
         estateMachine();
     }
     else if(estado == 3){
-        if( nr_vizinhos < 15 && millis() - lastSendTime > 60000){
+        if( nr_vizinhos < 15 && millis() - lastSendTime > 3600000){
+            estado = 4;
+        }
+        else if(nr_vizinhos == 0 && millis() - lastSendTime > 450000){
             estado = 4;
         }
         else{
@@ -429,52 +541,3 @@ void loop() {
         estateMachine();
     }
 }
-
-// void task1(void *parameter){
-  
-//     while(1){
-//         TIMERG0.wdt_wprotect=TIMG_WDT_WKEY_VALUE;
-//         TIMERG0.wdt_feed=1;
-//         TIMERG0.wdt_wprotect=0;
-//         if(LoRa.parsePacket()!=0){
-//             task2_usando = true;
-//             byte id         = LoRa.read();          // destino address
-//             int  origem     = LoRa.read();            // origem address
-//             byte anterior   = LoRa.read();
-//             byte destino    = LoRa.read();
-//             byte Length = LoRa.read();    // incoming msg length
-//             char msg[tam_msg] = "";
-
-//             // pega mensagem
-//              int i=0;
-//             while (LoRa.available()) {            // can't use readString() in callback
-//                 msg[i] += (char)LoRa.read();    // add bytes one by one
-//                 i++;
-//             }
-//             Serial.println("Msg recebida.");
-//             doing ="msg recebida.";
-//             //verifica se numero de caracteres bate com o numero de caracteres recebido na mensagem
-//             if (Length != i) {  // check length for error
-//                 Serial.println("Erro na msg [leght no math]");
-//                 task2_usando = false;
-//                 return;                         // skip rest of function
-//             }
-//             // if the destino isn't this device or ip_broadcast,
-//             if (destino != ip_this_node && destino != ip_broadcast) {
-//                 Serial.println("Nao eh pra mim, erro [wrong address].");
-//                 doing ="Nao eh pra mim";
-//                 task2_usando = false;
-//                 return;
-//             }
-//             addRecList(id, origem, anterior, destino, msg);
-//             task2_usando = false;
-//             Serial.println("oi!!");
-//         }
-//         delay(1);
-//     }
-// }
-// void IRAM_ATTR msgIRT() {
-//     portENTER_CRITICAL_ISR(&mux);
-//         onReceive(LoRa.parsePacket());
-//     portEXIT_CRITICAL_ISR(&mux);
-// }

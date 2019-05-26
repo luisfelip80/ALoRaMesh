@@ -10,7 +10,7 @@
 
 //TaskHandle_t Task1;
 
-String versao = "0.0.1";
+String versao = "0.0.6";
 
 //IP do gateway
 #define ip_gateway 0x00
@@ -19,7 +19,7 @@ String versao = "0.0.1";
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x0b
+#define ip_this_node 0x01
 
 
 #define tam_msg 20
@@ -29,23 +29,31 @@ String versao = "0.0.1";
 #define colunas 3
 #define max 9999999
 
-#define id_new_node             1
-#define id_reply_node           2
-#define id_connection_lost      3
-#define id_repetidor_isolado    4
-#define id_repetidor_loop       5
-#define id_resposta             6
-#define id_ja_ta_aqui_a_msg     7
-#define id_segunda_chance       8
-#define id_i_wake_up            9
+#define ID_NEW_NODE             1
+#define ID_CALLBACK             2
+#define ID_LOST_CONNECTION      3
+#define ID_REPETIDOR_ISOLADO    4
+#define ID_REPETIDOR_LOOP       5
+#define ID_RESPOSTA             6
+#define ID_JA_TA_AQUI_A_MSG     7
+#define ID_SEGUNDA_CHANCE       8
+#define ID_I_WAKE_UP            9
+#define ID_REPLY_CALL           10
+#define ID_TALK                 11
+#define ID_WAIT                 12
+#define ID_REPLY_ASK            13
 
-#define proximoEnvio			20000 
+#define proximoEnvio			18000 
 
 
 // tabela de vizinhos
 int tabela [linhas][colunas];
+byte repetidores[linhas] [2];
+byte nr_repetidores = 0;
 byte buffer[10][2];
 
+bool t;
+byte vez = 0;
 //variáveis do tipo inteiro
 int nr_vizinhos = 0;
 byte nr_vizinhos_on = 0;
@@ -64,6 +72,7 @@ byte estate = 0;
 bool wifi = false;
 bool bluetooth = false;
 bool radio_lora = false;
+bool repetidor_bool = false;
 bool freesend=false;
 byte confir[15][3];
 bool espera = false;
@@ -83,6 +92,8 @@ int ip_repetidor = -1;
 byte ip_origem;
 byte ip_filho;
 
+bool my_turn_to_talk = false;
+
 byte tam_fila = 0;
 
 //Flags de envio e recebimento de pacotes
@@ -95,6 +106,8 @@ byte gAnterior;
 byte gDestino;
 String gMsg;
 
+int ant_repetidor;
+
 String outgoing;              // outgoing message
 byte msgCount = 0;            // count of outgoing messages
 long lastSendTime = 0;        // last send time
@@ -103,6 +116,8 @@ int interval = 2000;          // interval between sends
 long lastCheck = 0;
 long esperaTime = 20000;
 long timeDraw ;
+long HEAR_TIME;
+long TIME_FOR_I_TALK = -180000;
 
 // Para configurar seções críticas (interrupções de ativação e interrupções de desativação não disponíveis)
 // usado para desabilitar e interromper interrupções
@@ -127,6 +142,9 @@ void menorCusto(int origem,int anterior){
     int i ;
     String msg = "dados";
     doing = "definir repetidor";
+
+    ant_repetidor = ip_repetidor;
+    
     for(i = 0; i < linhas; i++){
         //verificando em qual linha está o repetidor para marca-lo
         if((tabela [i] [1] == origem && tabela [i] [0] != 2) || (tabela [i] [1] == anterior && tabela [i] [0] != 2)){
@@ -155,6 +173,10 @@ void menorCusto(int origem,int anterior){
             tabela [i] [0] = 0;
         }
     }
+    if(ip_repetidor != ant_repetidor && ip_repetidor != -1){
+        tentativas_reenvio++;
+        sendMsg( ID_REPLY_CALL , ip_this_node , ip_this_node , ip_repetidor ,msg);
+    }
 }
 void verificaNos(int origem,int anterior, int custo){
     bool  h = false;
@@ -175,7 +197,7 @@ void verificaNos(int origem,int anterior, int custo){
         if(!h){
             doing = "Novo no.";
             if(isol){
-                sendMsg(id_segunda_chance,ip_this_node,ip_this_node,ip_broadcast,msg);
+                sendMsg(ID_SEGUNDA_CHANCE,ip_this_node,ip_this_node,ip_broadcast,msg);
                 isol = false;
             }
             for(i = 0; i< linhas; i ++){
@@ -205,7 +227,7 @@ void sendMessage(node *list){
         if(ip_this_node != seta->next->ant){
             isol = true;
             for(i=0; i < 2; i++){
-                sendMsg(id_repetidor_isolado,seta->next->orig,ip_this_node,seta->next->ant,msg);
+                sendMsg(ID_REPETIDOR_ISOLADO, seta->next->orig, ip_this_node, seta->next->ant, msg);
             }
         }        
         seta = lastOne(list);
@@ -217,10 +239,10 @@ void sendMessage(node *list){
     tentativas_reenvio ++;
     contador++;
     if(seta->next->orig == ip_this_node){
-        sendMsg(ip_repetidor,seta->next->orig,ip_this_node,ip_repetidor,msg + String(contador));
+        sendMsg(ID_REPLY_ASK,seta->next->orig,ip_this_node,ip_repetidor,msg + " " +String(contador));
     }
     else{
-        sendMsg(ip_repetidor,seta->next->orig,ip_this_node,ip_repetidor,msg);
+        sendMsg(ID_REPLY_ASK,seta->next->orig,ip_this_node,ip_repetidor,msg);
     }
     doing = "msg enviada";
     return;
