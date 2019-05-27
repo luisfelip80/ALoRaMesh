@@ -23,14 +23,33 @@ void trataRecebidos(){
     //task1_usando = false;
     switch (id) {
 
-        case ID_TALK:
-            my_turn_to_talk = true;
+        case ID_NEW_NODE: //alguém pediu para ser resgistrado.
+            doing ="pedido novo no.";
+            //requisição de um novo nó na rede
+            //montagem do pacote de dados com a resposta à requisição
+            custo = Heltec.LoRa.packetRssi() * -1;
+            verificaNos(origem, anterior , custo);
             break;
-        case ID_WAIT:
-            my_turn_to_talk = false;
+        /*case ID_CALLBACK: // responderam ao meu pedido de novo nó.
+            doing ="respondeu requisicao";
+            //nó respondeu à requisição de informação sobre o seu custo
+            // custo
+            custo = Heltec.LoRa.packetRssi() * -1;
+            //inclusão do nó na tabela
+            verificaNos(origem, anterior , custo);
+            break;*/
+        case ID_TALK:
+        
+            my_turn_to_talk = true;
             TIME_FOR_I_TALK = millis();
             break;
+        case ID_WAIT:
+        
+            my_turn_to_talk = false;
+            TIME_FOR_I_TALK = millis();
+            break; 
         case ID_REPLY_CALL: // alguém me pediu para registrar ele como possível requisidor de repetições (eu vou repetir o sinal dele).
+            
             if(ip_this_node != ip_gateway){
                 t = testaVizinhos(origem, anterior);
                 if(t == false){ // eu estou isolado
@@ -48,32 +67,6 @@ void trataRecebidos(){
             }
             repetidor_bool = true;
             doing = "ped. reply ok";
-            break;
-        case ID_NEW_NODE: //alguém pediu para ser resgistrado.
-            doing ="pedido novo no.";
-            //requisição de um novo nó na rede
-            //montagem do pacote de dados com a resposta à requisição
-            for(i = 0 ; i < 10 ; i++){
-                if(buffer[i][1] == anterior){
-                    i = 11;// chave de controle
-                }
-            }
-            // se chegar a 10 é porque não passou aqui.
-            if(i==10){
-                sendMsg(ID_CALLBACK,ip_this_node,ip_this_node,origem,msg);
-            }
-            custo = Heltec.LoRa.packetRssi() * -1;
-            verificaNos(origem, anterior , custo);
-            break;
-        case ID_CALLBACK: // responderam ao meu pedido de novo nó.
-            doing ="respondeu requisicao";
-            //nó respondeu à requisição de informação sobre o seu custo
-            // custo
-            custo = Heltec.LoRa.packetRssi() * -1;
-            //Serial.println(custo);
-
-            //inclusão do nó na tabela
-            verificaNos(origem, anterior , custo);
             break;
         case ID_LOST_CONNECTION: // perda de sinal
             doing = "no caiu";
@@ -307,12 +300,12 @@ void estateMachine(){
                         sendMsg(ID_WAIT, ip_this_node, ip_this_node, repetidores[i][0] , msg);
                         repetidores[i][1] = 0;
                         i++;
-                        if(i>=15){
+                        if(i==15){
                             i=0;
                         }
                         while(repetidores[i][0] == 0){ // vou dar uma volta circular no vetor de repetidores para ver se tem outro requisitor.
                             i++;
-                            if(i>=15){
+                            if(i==15){
                                 i=0;
                             }
                         }
@@ -499,7 +492,7 @@ void loop() {
          estado = 3;
         }
         else if(ip_this_node == ip_gateway){
-            if( nr_vizinhos < 15 && millis() - lastSendTime > 3600000){
+            if( nr_vizinhos < 15 && millis() - lastSendTime > 900000){
                 estado = 4;
             }
             else{
@@ -539,10 +532,10 @@ void loop() {
         estateMachine();
     }
     else if(estado == 3){
-        if( nr_vizinhos < 15 && millis() - lastSendTime > 900000){
+        if( nr_vizinhos < 15 && millis() - lastSendTime > 600000){
             estado = 4;
         }
-        else if(nr_vizinhos == 0 && millis() - lastSendTime > 450000){
+        else if(nr_vizinhos == 0 && millis() - lastSendTime > 60000){
             estado = 4;
         }
         else{

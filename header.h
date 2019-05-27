@@ -178,6 +178,7 @@ void menorCusto(int origem,int anterior){
         sendMsg( ID_REPLY_CALL , ip_this_node , ip_this_node , ip_repetidor ,msg);
     }
 }
+// verifica se o nó já foi registrado ou não.
 void verificaNos(int origem,int anterior, int custo){
     bool  h = false;
     int i;
@@ -196,6 +197,7 @@ void verificaNos(int origem,int anterior, int custo){
         }
         if(!h){
             doing = "Novo no.";
+            sendMsg(ID_NEW_NODE, ip_this_node, ip_this_node, origem, msg);
             if(isol){
                 sendMsg(ID_SEGUNDA_CHANCE,ip_this_node,ip_this_node,ip_broadcast,msg);
                 isol = false;
@@ -247,6 +249,7 @@ void sendMessage(node *list){
     doing = "msg enviada";
     return;
 }
+
 bool testaVizinhos(int origem, byte anterior){
     bool marc = false;
     int i;
