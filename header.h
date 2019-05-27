@@ -19,7 +19,7 @@ String versao = "0.0.6";
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x01
+#define ip_this_node 0x00
 
 
 #define tam_msg 20
@@ -173,11 +173,12 @@ void menorCusto(int origem,int anterior){
             tabela [i] [0] = 0;
         }
     }
-    if(ip_repetidor != ant_repetidor && ip_repetidor != -1){
+    if(ip_repetidor != ant_repetidor && ip_repetidor != -1 && ip_this_node != ip_gateway){
         tentativas_reenvio++;
         sendMsg( ID_REPLY_CALL , ip_this_node , ip_this_node , ip_repetidor ,msg);
     }
 }
+// verifica se o nó já foi registrado ou não.
 void verificaNos(int origem,int anterior, int custo){
     bool  h = false;
     int i;
@@ -196,6 +197,7 @@ void verificaNos(int origem,int anterior, int custo){
         }
         if(!h){
             doing = "Novo no.";
+            sendMsg(ID_NEW_NODE, ip_this_node, ip_this_node, origem, msg);
             if(isol){
                 sendMsg(ID_SEGUNDA_CHANCE,ip_this_node,ip_this_node,ip_broadcast,msg);
                 isol = false;
@@ -247,6 +249,7 @@ void sendMessage(node *list){
     doing = "msg enviada";
     return;
 }
+
 bool testaVizinhos(int origem, byte anterior){
     bool marc = false;
     int i;

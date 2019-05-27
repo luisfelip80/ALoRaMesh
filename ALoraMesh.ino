@@ -1,5 +1,14 @@
 #include "header.h"
 
+/*
+ver o que é isso 
+15:52:46.997 -> Msg recebida. origem: 2 id: 13 msg dados 6
+15:52:46.997 -> Nova msg, node: 2 msg: dados 6
+15:52:46.997 -> mandei :6
+15:53:12.640 -> Nao eh pra mim, erro [wrong address].
+15:53:13.111 -> Nao eh pra mim, erro [wrong address].
+
+*/
 void trataRecebidos(){
 
     //task1_usando = true;
@@ -13,20 +22,41 @@ void trataRecebidos(){
     delRecList(setaRec);
     //task1_usando = false;
     switch (id) {
-        case ID_TALK:
-            my_turn_to_talk = true;
+
+        case ID_NEW_NODE: //alguém pediu para ser resgistrado.
+            doing ="pedido novo no.";
+            //requisição de um novo nó na rede
+            //montagem do pacote de dados com a resposta à requisição
+            custo = Heltec.LoRa.packetRssi() * -1;
+            verificaNos(origem, anterior , custo);
             break;
-        case ID_WAIT:
-            my_turn_to_talk = false;
+        /*case ID_CALLBACK: // responderam ao meu pedido de novo nó.
+            doing ="respondeu requisicao";
+            //nó respondeu à requisição de informação sobre o seu custo
+            // custo
+            custo = Heltec.LoRa.packetRssi() * -1;
+            //inclusão do nó na tabela
+            verificaNos(origem, anterior , custo);
+            break;*/
+        case ID_TALK:
+        
+            my_turn_to_talk = true;
             TIME_FOR_I_TALK = millis();
             break;
+        case ID_WAIT:
+        
+            my_turn_to_talk = false;
+            TIME_FOR_I_TALK = millis();
+            break; 
         case ID_REPLY_CALL: // alguém me pediu para registrar ele como possível requisidor de repetições (eu vou repetir o sinal dele).
-
-            t = testaVizinhos(origem, anterior);
-            if(t == false){ // eu estou isolado
-                sendMsg(ID_REPETIDOR_ISOLADO, origem ,ip_this_node, anterior, msg);
-                doing = "ped. reply negado";
-                break;
+            
+            if(ip_this_node != ip_gateway){
+                t = testaVizinhos(origem, anterior);
+                if(t == false){ // eu estou isolado
+                    sendMsg(ID_REPETIDOR_ISOLADO, origem ,ip_this_node, anterior, msg);
+                    doing = "ped. reply negado";
+                    break;
+                }
             }
             for(i=0;i<15;i++){
                 if(repetidores[i] [0] == 0){
@@ -37,24 +67,6 @@ void trataRecebidos(){
             }
             repetidor_bool = true;
             doing = "ped. reply ok";
-            break;
-        case ID_NEW_NODE: //alguém pediu para ser resgistrado.
-            doing ="pedido novo no.";
-            //requisição de um novo nó na rede
-            //montagem do pacote de dados com a resposta à requisição
-            sendMsg(ID_CALLBACK,ip_this_node,ip_this_node,origem,msg);
-            custo = Heltec.LoRa.packetRssi() * -1;
-            verificaNos(origem, anterior , custo);
-            break;
-        case ID_CALLBACK: // responderam ao meu pedido de novo nó.
-            doing ="respondeu requisicao";
-            //nó respondeu à requisição de informação sobre o seu custo
-            // custo
-            custo = Heltec.LoRa.packetRssi() * -1;
-            //Serial.println(custo);
-
-            //inclusão do nó na tabela
-            verificaNos(origem, anterior , custo);
             break;
         case ID_LOST_CONNECTION: // perda de sinal
             doing = "no caiu";
@@ -253,7 +265,7 @@ void onReceive(int packetSize) {
         IRS_use = false;
         return;
     }
-    Serial.println("Msg recebida. id: " + String(id)+" msg " + String(msg));
+    Serial.println("Msg recebida. origem: " +String(origem)+ " id: "+ String(id)+" msg " + String(msg));
     doing ="msg recebida.";
     addRecList(id, origem, anterior, destino, msg);
     IRS_use = false;
@@ -262,7 +274,7 @@ void onReceive(int packetSize) {
 }
 void estateMachine(){
     int i;
-    String msg = "dados";   
+    String msg = "dados";
     switch (estado) {
         case 0:
             
@@ -288,12 +300,12 @@ void estateMachine(){
                         sendMsg(ID_WAIT, ip_this_node, ip_this_node, repetidores[i][0] , msg);
                         repetidores[i][1] = 0;
                         i++;
-                        if(i>=15){
+                        if(i==15){
                             i=0;
                         }
                         while(repetidores[i][0] == 0){ // vou dar uma volta circular no vetor de repetidores para ver se tem outro requisitor.
                             i++;
-                            if(i>=15){
+                            if(i==15){
                                 i=0;
                             }
                         }
@@ -319,43 +331,38 @@ void estateMachine(){
             }
           break;
         case 1:// enviar msg da fila se houver.
-            if(my_turn_to_talk){
-                //if(repetidores[vez][0]!=0){
-                //    sendMsg(ID_WAIT, ip_this_node, ip_this_node, repetidores[vez][0] , msg);
-                //}
-
-                TIME_FOR_I_TALK = millis();
-                espera = true;
-                lastTime = millis();
-                esperaTime = random(20000) + proximoEnvio;
-                doing = "enviando msg";
-                sendMessage(list);
-
-                //if(repetidores[vez][0]!=0){
-                //    sendMsg(ID_TALK, ip_this_node, ip_this_node, repetidores[vez][0] , msg);    
-                //}
-            }
-            else if (millis() - TIME_FOR_I_TALK >= 180000){
-                seta = lastOne(list);
-                menorCusto(seta->next->orig, seta->next->ant);
-                if(ant_repetidor == ip_repetidor && ip_repetidor != -1){
-                    tentativas_reenvio++;
-                    sendMsg(ID_REPLY_CALL, ip_this_node, ip_this_node, ip_repetidor, msg);
+            if(ip_this_node != ip_gateway){
+                if(my_turn_to_talk){
+                    
+                    TIME_FOR_I_TALK = millis();
+                    espera = true;
+                    lastTime = millis();
+                    esperaTime = random(20000) + proximoEnvio;
+                    doing = "enviando msg";
+                    sendMessage(list);
                 }
-                else if(ip_repetidor == -1){
-                    doing = "Repetidor isolado";
-                    if(ip_this_node != seta->next->ant){
-                        isol = true;
-                        for(i=0; i < 2; i++){
-                            sendMsg(ID_REPETIDOR_ISOLADO, seta->next->orig, ip_this_node, seta->next->ant, msg);
-                        }
-                    }        
+                else if (millis() - TIME_FOR_I_TALK >= 180000){
                     seta = lastOne(list);
-                    vetorFila[seta->next->orig] = false;
-                    delList(seta);
-                    tam_fila--;
+                    menorCusto(seta->next->orig, seta->next->ant);
+                    if(ant_repetidor == ip_repetidor && ip_repetidor != -1){
+                        tentativas_reenvio++;
+                        sendMsg(ID_REPLY_CALL, ip_this_node, ip_this_node, ip_repetidor, msg);
+                    }
+                    else if(ip_repetidor == -1){
+                        doing = "Repetidor isolado";
+                        if(ip_this_node != seta->next->ant){
+                            isol = true;
+                            for(i=0; i < 2; i++){
+                                sendMsg(ID_REPETIDOR_ISOLADO, seta->next->orig, ip_this_node, seta->next->ant, msg);
+                            }
+                        }        
+                        seta = lastOne(list);
+                        vetorFila[seta->next->orig] = false;
+                        delList(seta);
+                        tam_fila--;
+                    }
+                    TIME_FOR_I_TALK = millis();
                 }
-                TIME_FOR_I_TALK = millis();
             }
             break;
         case 2:// contagem de tentativas
@@ -485,7 +492,7 @@ void loop() {
          estado = 3;
         }
         else if(ip_this_node == ip_gateway){
-            if( nr_vizinhos < 15 && millis() - lastSendTime > 3600000){
+            if( nr_vizinhos < 15 && millis() - lastSendTime > 900000){
                 estado = 4;
             }
             else{
@@ -525,10 +532,10 @@ void loop() {
         estateMachine();
     }
     else if(estado == 3){
-        if( nr_vizinhos < 15 && millis() - lastSendTime > 3600000){
+        if( nr_vizinhos < 15 && millis() - lastSendTime > 600000){
             estado = 4;
         }
-        else if(nr_vizinhos == 0 && millis() - lastSendTime > 450000){
+        else if(nr_vizinhos == 0 && millis() - lastSendTime > 60000){
             estado = 4;
         }
         else{
