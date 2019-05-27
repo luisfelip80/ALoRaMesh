@@ -24,25 +24,19 @@ void trataRecebidos(){
     switch (id) {
 
         case ID_NEW_NODE: //alguém pediu para ser resgistrado.
+            
             doing ="pedido novo no.";
             //requisição de um novo nó na rede
             //montagem do pacote de dados com a resposta à requisição
             custo = Heltec.LoRa.packetRssi() * -1;
             verificaNos(origem, anterior , custo);
             break;
-        /*case ID_CALLBACK: // responderam ao meu pedido de novo nó.
-            doing ="respondeu requisicao";
-            //nó respondeu à requisição de informação sobre o seu custo
-            // custo
-            custo = Heltec.LoRa.packetRssi() * -1;
-            //inclusão do nó na tabela
-            verificaNos(origem, anterior , custo);
-            break;*/
-        case ID_TALK:
         
+        case ID_TALK:
+
             my_turn_to_talk = true;
             TIME_FOR_I_TALK = millis();
-            break;
+            break;      
         case ID_WAIT:
         
             my_turn_to_talk = false;
@@ -126,6 +120,23 @@ void trataRecebidos(){
             if(anterior != repetidores[vez][0]){
                 doing ="fora de hora";
                 sendMsg(ID_WAIT, ip_this_node, ip_this_node, anterior, msg);
+                if(ip_this_node != ip_gateway){
+                    t = testaVizinhos(origem, anterior);
+                    if(t == false){ // eu estou isolado
+                        sendMsg(ID_REPETIDOR_ISOLADO, origem ,ip_this_node, anterior, msg);
+                        doing = "ped. reply negado";
+                        break;
+                    }
+                }
+                for(i=0;i<15;i++){
+                    if(repetidores[i] [0] == 0){
+                        repetidores[i] [0] = origem;
+                        nr_repetidores++;
+                        i = 15;
+                    }
+                }
+                repetidor_bool = true;
+                doing = "ped. reply ok";
                 break;
             }
             doing = "pedido para repetir";
@@ -150,8 +161,8 @@ void trataRecebidos(){
             if(i==10  || ip_this_node == ip_gateway){
                 doing= "nova msg.";
                 if(ip_this_node == ip_gateway){
-                    Serial.print("Nova msg, node: " + String(origem) + " msg: ");
-                    Serial.println(msg);
+                    //Serial.print("Nova msg, node: " + String(origem) + " msg: ");
+                    //Serial.println(msg);
                 }
                 else{
                     addFila(origem,anterior, ip_this_node, list);
@@ -492,10 +503,12 @@ void loop() {
          estado = 3;
         }
         else if(ip_this_node == ip_gateway){
-            if( nr_vizinhos < 15 && millis() - lastSendTime > 900000){
+            if( nr_vizinhos < 15 && millis() - lastSendTime > 600000){
                 estado = 4;
             }
-            else{
+            else if(nr_vizinhos == 0 && millis() - lastSendTime > 60000){
+                estado = 4;
+            }            else{
                 estado = 0;
             }
         }
