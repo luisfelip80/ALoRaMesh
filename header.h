@@ -10,7 +10,7 @@
 
 //TaskHandle_t Task1;
 
-String versao = "0.0.6";
+String versao = "0.0.7";
 
 //IP do gateway
 #define ip_gateway 0x00
@@ -30,7 +30,7 @@ String versao = "0.0.6";
 #define max 9999999
 
 #define ID_NEW_NODE             1
-#define ID_CALLBACK             2
+#define ID_REMOVE_REPLY         2
 #define ID_LOST_CONNECTION      3
 #define ID_REPETIDOR_ISOLADO    4
 #define ID_REPETIDOR_LOOP       5

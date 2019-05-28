@@ -31,16 +31,35 @@ void trataRecebidos(){
             custo = Heltec.LoRa.packetRssi() * -1;
             verificaNos(origem, anterior , custo);
             break;
-        
-        case ID_TALK:
+        case ID_REMOVE_REPLY: // remover repetidor
 
-            my_turn_to_talk = true;
-            TIME_FOR_I_TALK = millis();
+            for(i=0;i<15;i++){
+                if(repetidores[i] [0] == origem){
+                    repetidores[i] [0] = 0;
+                    repetidores[i] [1] = 0;
+                    nr_repetidores++;
+                    i = 15;
+                }
+            }
+            break;
+
+        case ID_TALK:
+            if(origem == ip_repetidor){
+                my_turn_to_talk = true;
+            }
+            else{
+                sendMsg(ID_REMOVE_REPLY, ip_this_node, ip_this_node, anterior, msg);
+            }
             break;      
-        case ID_WAIT:
+        case ID_WAIT:        
         
-            my_turn_to_talk = false;
-            TIME_FOR_I_TALK = millis();
+            if(origem == ip_repetidor){
+                my_turn_to_talk = false;
+                TIME_FOR_I_TALK = millis();
+            }
+            else{
+                sendMsg(ID_REMOVE_REPLY, ip_this_node, ip_this_node, anterior, msg);
+            }
             break; 
         case ID_REPLY_CALL: // alguém me pediu para registrar ele como possível requisidor de repetições (eu vou repetir o sinal dele).
             
@@ -53,16 +72,25 @@ void trataRecebidos(){
                 }
             }
             for(i=0;i<15;i++){
-                if(repetidores[i] [0] == 0){
-                    repetidores[i] [0] = origem;
-                    nr_repetidores++;
-                    i = 15;
+                if(repetidores[i] [0] == origem){
+                    i = 16;
                 }
             }
-            repetidor_bool = true;
-            doing = "ped. reply ok";
+            if(i == 15){
+                for(i=0;i<15;i++){
+                    if(repetidores[i] [0] == 0){
+                        repetidores[i] [0] = origem;
+                        nr_repetidores++;
+                        i = 15;
+                    }
+                }
+                repetidor_bool = true;
+                doing = "ped. reply ok";
+            }
             break;
+        
         case ID_LOST_CONNECTION: // perda de sinal
+        
             doing = "no caiu";
             //verificando em qual linha está este nó
             for(i = 0; i<linhas; i++){
@@ -129,14 +157,21 @@ void trataRecebidos(){
                     }
                 }
                 for(i=0;i<15;i++){
-                    if(repetidores[i] [0] == 0){
-                        repetidores[i] [0] = origem;
-                        nr_repetidores++;
-                        i = 15;
+                    if(repetidores[i] [0] == origem){
+                        i = 16;
                     }
                 }
-                repetidor_bool = true;
-                doing = "ped. reply ok";
+                if(i == 15){
+                    for(i=0;i<15;i++){
+                        if(repetidores[i] [0] == 0){
+                            repetidores[i] [0] = origem;
+                            nr_repetidores++;
+                            i = 15;
+                        }
+                    }
+                    repetidor_bool = true;
+                    doing = "ped. reply ok";
+                }
                 break;
             }
             doing = "pedido para repetir";
@@ -227,7 +262,7 @@ void trataRecebidos(){
             doing ="pedido novo no.";
             //requisição de um novo nó na rede
             //montagem do pacote de dados com a resposta à requisição
-            sendMsg(ID_CALLBACK,ip_this_node,ip_this_node,origem,msg);
+            sendMsg(ID_NEW_NODE,ip_this_node,ip_this_node,origem,msg);
             for(i = 0; i < linhas; i++){
                 //verificando em qual linha está o repetidor para desmarca-lo
                 if(origem == tabela[i][1] && tabela[i][0] != 2){
@@ -303,8 +338,9 @@ void estateMachine(){
             }
 
             if(nr_repetidores > 0){
+
                 if(millis() - HEAR_TIME >= 60000){ // escolher quem fala, quem eu vou ouvir.
-                                    
+                    
                     for(i=0; i<15 && repetidores[i][1] == 0 ;i++); // procura marcação [i][1] == 1, era quem eu estava ouvindo.
                 
                     if(i<15){//achei de quem era a vez.    
@@ -320,6 +356,7 @@ void estateMachine(){
                                 i=0;
                             }
                         }
+                        repetidores[i][1] = 1;
                         sendMsg(ID_TALK, ip_this_node, ip_this_node, repetidores[i][0] , msg);
                         vez = i;
                     }
@@ -332,6 +369,14 @@ void estateMachine(){
                         }
                     }
                     HEAR_TIME = millis();
+                //for(i=0; i<15 ;i++){
+                //    Serial.print(" [" +String(repetidores[i][0]) + "]");
+                //}
+                //Serial.println(".");
+                //for(i=0; i<15 ;i++){
+                //    Serial.print(" [" +String(repetidores[i][1]) + "]");
+                //}
+                //Serial.println(".");
                 }
             }
             else{
@@ -344,7 +389,7 @@ void estateMachine(){
         case 1:// enviar msg da fila se houver.
             if(ip_this_node != ip_gateway){
                 if(my_turn_to_talk){
-                    
+
                     TIME_FOR_I_TALK = millis();
                     espera = true;
                     lastTime = millis();
@@ -434,7 +479,7 @@ void setup() {
     // Library sets automatically baud rate to 115200 in next line
     Heltec.begin(true /*DisplayEnable Enable*/, true /*Heltec.LoRa Disable*/, true /*Serial Enable*/, true /*PABOOST Enable*/, BAND /*long BAND*/);   
     LoRa.onReceive(onReceive);
-    //LoRa.receive();
+    LoRa.receive();
     //LoRa.onReceive(onReceive);
     
     Heltec.display->clear();
@@ -473,6 +518,7 @@ void setup() {
         buffer[i][0] = -1;
         buffer[i][1] = -1;
     }
+        //LoRa.receive();
     for(i = 0 ;i < 5; i++){
         l++;
         Heltec.display->drawLine(49+l, 61, 49+l, 63);
