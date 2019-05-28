@@ -19,7 +19,7 @@ String versao = "0.0.7";
 #define ip_broadcast 0xFF
 
 // IP do dispositivo
-#define ip_this_node 0x00
+#define ip_this_node 0x02
 
 
 #define tam_msg 20

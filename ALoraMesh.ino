@@ -20,7 +20,16 @@ void trataRecebidos(){
     String msg = String(setaRec->next->msg);
     int i,h=0;
     delRecList(setaRec);
-    //task1_usando = false;
+
+    // if the destino isn't this device or ip_broadcast,
+    if (destino != ip_this_node && destino != ip_broadcast) {
+        Serial.println("Nao eh pra mim, erro [wrong address].");
+        doing ="Nao eh pra mim";
+        return;
+    }
+
+    Serial.println("Msg recebida. origem: " +String(origem)+ " id: "+ String(id)+" msg " + String(msg));
+
     switch (id) {
 
         case ID_NEW_NODE: //alguém pediu para ser resgistrado.
@@ -301,20 +310,11 @@ void onReceive(int packetSize) {
     //verifica se numero de caracteres bate com o numero de caracteres recebido na mensagem
     if (Length != i) {  // check length for error
         Serial.println("Erro na msg [leght no math]");
-        IRS_use = false;
         return;                         // skip rest of function
     }
-    // if the destino isn't this device or ip_broadcast,
-    if (destino != ip_this_node && destino != ip_broadcast) {
-        Serial.println("Nao eh pra mim, erro [wrong address].");
-        doing ="Nao eh pra mim";
-        IRS_use = false;
-        return;
-    }
-    Serial.println("Msg recebida. origem: " +String(origem)+ " id: "+ String(id)+" msg " + String(msg));
+    
     doing ="msg recebida.";
     addRecList(id, origem, anterior, destino, msg);
-    IRS_use = false;
     LoRa.receive();
     return;
 }
