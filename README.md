@@ -4,3 +4,7 @@
 Uma Rede mesh lora
 
 Essa rede é baseada na repetição dos nós na direção da periferia para o centro, como uma raiz, sendo o central.
+
+
+#Apoie o projeto.
+https://www.catarse.me/rede_mesh_loro?ref=project_link
