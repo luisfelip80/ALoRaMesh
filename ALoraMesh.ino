@@ -54,6 +54,7 @@ void trataRecebidos(){
 
         case ID_TALK:
             if(origem == ip_repetidor){
+                tentativas_reenvio = 0;
                 my_turn_to_talk = true;
             }
             else{
@@ -63,6 +64,7 @@ void trataRecebidos(){
         case ID_WAIT:        
         
             if(origem == ip_repetidor){
+                tentativas_reenvio = 0;
                 my_turn_to_talk = false;
                 TIME_FOR_I_TALK = millis();
             }
@@ -312,7 +314,7 @@ void onReceive(int packetSize) {
         Serial.println("Erro na msg [leght no math]");
         return;                         // skip rest of function
     }
-    
+
     doing ="msg recebida.";
     addRecList(id, origem, anterior, destino, msg);
     LoRa.receive();
